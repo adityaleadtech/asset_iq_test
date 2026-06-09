@@ -60,3 +60,70 @@ def create_client_admin(
     db.refresh(user)
 
     return user
+
+
+
+
+
+from app.utils.security import (
+    verify_password
+)
+
+from app.utils.jwthandler import (
+    create_token
+)
+
+
+def login_client_admin(
+    db,
+    email: str,
+    password: str
+):
+
+    admin = (
+        db.query(User)
+        .filter(
+            User.email == email,
+            User.role == "CLIENT_ADMIN",
+            User.is_active == True
+        )
+        .first()
+    )
+
+    if not admin:
+        return None
+
+    if not verify_password(
+        password,
+        admin.password_hash
+    ):
+        return None
+
+    token = create_token(
+        {
+            "id": admin.id,
+            "client_id": admin.client_id,
+            "email": admin.email,
+            "role": admin.role
+        }
+    )
+
+    return token
+
+
+
+from app.models.users import User
+
+
+def get_client_admin_profile(
+    db,
+    user_id: str
+):
+    return (
+        db.query(User)
+        .filter(
+            User.id == user_id,
+            User.role == "CLIENT_ADMIN"
+        )
+        .first()
+    )

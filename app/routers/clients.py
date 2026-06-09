@@ -16,11 +16,20 @@ from app.services.client_services import (
     get_client_by_id,
     update_client,
     delete_client,
-    get_deactivated_clients
+    get_deactivated_clients,
+    reactivate_client
 )
 
 from app.utils.auth import (
     admin_required
+)
+
+from app.schemas.departments import (
+    DepartmentCreate,
+    DepartmentResponse
+)
+from app.services.departments import (
+    get_departments_by_client
 )
 
 router = APIRouter(
@@ -59,7 +68,28 @@ def fetch_deactivated_clients(
 
 
 
+@router.patch(
+    "/{client_id}/restore",
+    response_model=ClientResponse
+)
+def restore_client(
+    client_id: str,
+    db: Session = Depends(get_db),
+    current_admin=Depends(admin_required)
+):
 
+    client = reactivate_client(
+        db,
+        client_id
+    )
+
+    if not client:
+        raise HTTPException(
+            status_code=404,
+            detail="Client not found"
+        )
+
+    return client
 
 
 
@@ -152,3 +182,21 @@ def deactivate_client(
         "message": "Client deactivated successfully"
     }
 
+
+
+
+
+@router.get(
+    "/{client_id}/departments",
+    response_model=list[DepartmentResponse]
+)
+def get_client_departments(
+    client_id: str,
+    db: Session = Depends(get_db),
+    current_admin=Depends(admin_required)
+):
+
+    return get_departments_by_client(
+        db,
+        client_id
+    )

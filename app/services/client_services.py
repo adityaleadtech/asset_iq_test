@@ -120,3 +120,27 @@ def get_deactivated_clients(db):
         )
         .all()
     )
+
+
+def reactivate_client(
+    db,
+    client_id: str
+):
+    client = (
+        db.query(Client)
+        .filter(
+            Client.id == client_id
+        )
+        .first()
+    )
+
+    if not client:
+        return None
+
+    client.is_active = True
+
+    db.commit()
+
+    db.refresh(client)
+
+    return client
