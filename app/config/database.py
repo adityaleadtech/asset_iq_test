@@ -11,8 +11,8 @@ DATABASE_URL = (
     f"{settings.DB_HOST}:"
     f"{settings.DB_PORT}/"
     f"{settings.DB_NAME}"
+    f"?ssl_disabled=true"
 )
-
 #creates a connection engine that SQLAlchemy  uses to communicate with the database
 engine= create_engine(
     DATABASE_URL,

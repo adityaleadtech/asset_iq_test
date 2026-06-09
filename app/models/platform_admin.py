@@ -27,10 +27,6 @@ class PlatformAdmin(Base):
     server_default=func.now()
 )
     
-    updated_at = Column(
-    DateTime,
-    nullable=True,
-    onupdate=func.now()
-)
+    
 
     role = Column(String(50), nullable=False)

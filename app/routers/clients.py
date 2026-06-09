@@ -1,16 +1,22 @@
 from fastapi import APIRouter
 from fastapi import Depends
 from sqlalchemy.orm import Session
-
+from fastapi import HTTPException
 from app.config.dependencies import get_db
 
 from app.schemas.clients import (
     ClientCreate,
-    ClientResponse
+    ClientResponse,
+    ClientUpdate
 )
 
 from app.services.client_services import (
-    create_client
+    create_client,
+    get_all_clients,
+    get_client_by_id,
+    update_client,
+    delete_client,
+    get_deactivated_clients
 )
 
 from app.utils.auth import (
@@ -37,3 +43,112 @@ def create_new_client(
         client,
         current_admin["id"]
     )
+
+
+
+
+@router.get(
+    "/deactivated",
+    response_model=list[ClientResponse]
+)
+def fetch_deactivated_clients(
+    db: Session = Depends(get_db),
+    current_admin=Depends(admin_required)
+):
+    return get_deactivated_clients(db)
+
+
+
+
+
+
+
+@router.get(
+    "",
+    response_model=list[ClientResponse]
+)
+def fetch_all_clients(
+    db: Session = Depends(get_db),
+    current_admin=Depends(admin_required)
+):
+    return get_all_clients(db)
+
+
+@router.get(
+    "/{client_id}",
+    response_model=ClientResponse
+)
+def fetch_client_by_id(
+    client_id: str,
+    db: Session = Depends(get_db),
+    current_admin=Depends(admin_required)
+):
+    
+    client = get_client_by_id(
+        db,
+        client_id
+    )
+
+    if not client:
+        raise HTTPException(
+            status_code=404,
+            detail="Client not found"
+        )
+
+    return client
+
+
+@router.patch(
+    "/{client_id}",
+    response_model=ClientResponse
+)
+def update_existing_client(
+    client_id: str,
+    client_data: ClientUpdate,
+    db: Session = Depends(get_db),
+    current_admin=Depends(admin_required)
+):
+    client = update_client(
+        db,
+        client_id,
+        client_data
+    )
+
+    if not client:
+        raise HTTPException(
+            status_code=404,
+            detail="Client not found"
+        )
+
+    return client
+
+
+
+
+
+
+
+@router.delete(
+    "/{client_id}"
+)
+def deactivate_client(
+    client_id: str,
+    db: Session = Depends(get_db),
+    current_admin=Depends(admin_required)
+):
+
+    client = delete_client(
+        db,
+        client_id
+    )
+
+    if not client:
+        raise HTTPException(
+            status_code=404,
+            detail="Client not found"
+        )
+
+    return {
+        "message": "Client deactivated successfully"
+    }
+

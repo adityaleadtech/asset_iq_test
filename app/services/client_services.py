@@ -27,3 +27,96 @@ def create_client(
     db.refresh(client)
 
     return client
+
+
+def get_all_clients(db):
+    return db.query(Client).all()
+
+
+
+
+
+def get_client_by_id(
+    db,
+    client_id: str
+):
+    return (
+        db.query(Client)
+        .filter(
+            Client.id == client_id
+        )
+        .first()
+    )
+
+
+
+def update_client(
+    db,
+    client_id: str,
+    client_data
+):
+    client = (
+        db.query(Client)
+        .filter(
+            Client.id == client_id
+        )
+        .first()
+    )
+
+    if not client:
+        return None
+
+    update_data = client_data.model_dump(
+        exclude_unset=True
+    )
+
+    for key, value in update_data.items():
+        setattr(
+            client,
+            key,
+            value
+        )
+
+    db.commit()
+
+    db.refresh(client)
+
+    return client
+
+
+
+
+
+def delete_client(
+    db,
+    client_id: str
+):
+    client = (
+        db.query(Client)
+        .filter(
+            Client.id == client_id
+        )
+        .first()
+    )
+
+    if not client:
+        return None
+
+    client.is_active = False
+
+    db.commit()
+
+    db.refresh(client)
+
+    return client
+
+
+
+def get_deactivated_clients(db):
+    return (
+        db.query(Client)
+        .filter(
+            Client.is_active == False
+        )
+        .all()
+    )
