@@ -59,3 +59,49 @@ class ClientAdminProfileResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+
+from pydantic import BaseModel
+from pydantic import EmailStr
+
+
+class ManagerCreate(BaseModel):
+
+    client_id: str | None = None
+
+    department_id: str | None = None
+
+    email: EmailStr
+
+    password: str
+
+    full_name: str
+
+    phone: str | None = None
+
+    employee_id: str | None = None
+
+
+class UserResponse(BaseModel):
+
+    id: str
+
+    client_id: str
+
+    department_id: str | None
+
+    email: str
+
+    full_name: str
+
+    phone: str | None
+
+    role: str
+
+    employee_id: str | None
+
+    is_active: bool
+
+    model_config = {
+        "from_attributes": True
+    }

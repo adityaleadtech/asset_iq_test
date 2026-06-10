@@ -4,6 +4,13 @@ from app.routers.platform_admin_router import (
     router as platform_admin_router
 )
 
+from app.routers.subscription import (
+    router as subscription_router
+)
+
+from app.routers.subscription_plans import (
+    router as subscription_plan_router
+)
 
 from app.routers.client_router import (
     router as client_admin_router
@@ -40,6 +47,19 @@ app.include_router(
     department_router
 )
 
+app.include_router(
+    subscription_plan_router
+)
+
+app.include_router(
+    subscription_router
+)
+
+from app.routers.users import (
+    router as user_router
+)
+
+app.include_router(user_router)
 
 @app.get("/")
 def test():
