@@ -1,6 +1,10 @@
 from pydantic import BaseModel, EmailStr
 
 
+class AssignManagerRequest(BaseModel):
+
+    manager_id: str
+
 class ClientAdminCreate(BaseModel):
     client_id: str
     email: EmailStr
@@ -105,3 +109,14 @@ class UserResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+
+class ManagerUpdate(BaseModel):
+
+    department_id: str | None = None
+
+    full_name: str | None = None
+
+    phone: str | None = None
+
+    employee_id: str | None = None

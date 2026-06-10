@@ -5,6 +5,9 @@ from fastapi import HTTPException
 from app.models.users import User
 from app.utils.security import hash_password
 
+
+from app.models.subscription import Subscription
+
 import uuid
 
 from app.models.users import User
@@ -258,3 +261,353 @@ def create_manager(
     db.refresh(manager)
 
     return manager
+
+
+def get_managers_for_client_admin(
+    db,
+    current_user
+):
+
+    return (
+        db.query(User)
+        .filter(
+            User.client_id ==
+            current_user["client_id"],
+
+            User.role == "MANAGER",
+
+            User.is_active == True
+        )
+        .all()
+    )
+
+
+
+def get_all_managers(
+    db,
+    current_user
+):
+
+    query = (
+        db.query(User)
+        .filter(
+            User.role == "MANAGER",
+            User.is_active == True
+        )
+    )
+
+    if current_user["role"] == "CLIENT_ADMIN":
+
+        query = query.filter(
+            User.client_id ==
+            current_user["client_id"]
+        )
+
+    return query.all()
+
+
+
+def get_all_managers(
+    db,
+    current_user
+):
+
+    query = (
+        db.query(User)
+        .filter(
+            User.role == "MANAGER",
+            User.is_active == True
+        )
+    )
+
+    if current_user["role"] == "CLIENT_ADMIN":
+
+        query = query.filter(
+            User.client_id ==
+            current_user["client_id"]
+        )
+
+    return query.all()
+
+
+
+def get_managers_by_client_id(
+    db,
+    client_id: str
+):
+
+    return (
+        db.query(User)
+        .filter(
+            User.client_id == client_id,
+
+            User.role == "MANAGER",
+
+            User.is_active == True
+        )
+        .all()
+    )
+
+
+from fastapi import HTTPException
+
+
+def get_manager_by_id(
+    db,
+    manager_id: str,
+    current_user
+):
+
+    query = (
+        db.query(User)
+        .filter(
+            User.id == manager_id,
+            User.role == "MANAGER"
+        )
+    )
+
+    manager = query.first()
+
+    if not manager:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Manager not found"
+        )
+
+    if current_user["role"] == "CLIENT_ADMIN":
+
+        if (
+            manager.client_id
+            !=
+            current_user["client_id"]
+        ):
+
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+    return manager
+
+
+
+def update_manager(
+    db,
+    manager_id: str,
+    manager_data,
+    current_user
+):
+
+    manager = (
+        db.query(User)
+        .filter(
+            User.id == manager_id,
+            User.role == "MANAGER",
+            User.is_active == True
+        )
+        .first()
+    )
+
+    if not manager:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Manager not found"
+        )
+
+    if current_user["role"] == "CLIENT_ADMIN":
+
+        if (
+            manager.client_id
+            !=
+            current_user["client_id"]
+        ):
+
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+    update_data = (
+        manager_data.model_dump(
+            exclude_unset=True
+        )
+    )
+
+    for key, value in update_data.items():
+
+        setattr(
+            manager,
+            key,
+            value
+        )
+
+    db.commit()
+
+    db.refresh(manager)
+
+    return manager
+
+
+def deactivate_manager(
+    db,
+    manager_id: str,
+    current_user
+):
+
+    manager = (
+        db.query(User)
+        .filter(
+            User.id == manager_id,
+            User.role == "MANAGER",
+            User.is_active == True
+        )
+        .first()
+    )
+
+    if not manager:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Manager not found"
+        )
+
+    if current_user["role"] == "CLIENT_ADMIN":
+
+        if (
+            manager.client_id
+            !=
+            current_user["client_id"]
+        ):
+
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.client_id ==
+            manager.client_id,
+            Subscription.status == "active"
+        )
+        .first()
+    )
+
+    manager.is_active = False
+
+    if subscription:
+
+        subscription.used_licences = max(
+            0,
+            subscription.used_licences - 1
+        )
+
+    db.commit()
+
+    return {
+        "message":
+        "Manager deactivated successfully"
+    }
+
+
+def get_deactivated_managers(
+    db,
+    current_user
+):
+
+    query = (
+        db.query(User)
+        .filter(
+            User.role == "MANAGER",
+            User.is_active == False
+        )
+    )
+
+    if current_user["role"] == "CLIENT_ADMIN":
+
+        query = query.filter(
+            User.client_id ==
+            current_user["client_id"]
+        )
+
+    return query.all()
+
+
+def restore_manager(
+    db,
+    manager_id: str,
+    current_user
+):
+
+    manager = (
+        db.query(User)
+        .filter(
+            User.id == manager_id,
+            User.role == "MANAGER",
+            User.is_active == False
+        )
+        .first()
+    )
+
+    if not manager:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Manager not found"
+        )
+
+    if current_user["role"] == "CLIENT_ADMIN":
+
+        if (
+            manager.client_id
+            !=
+            current_user["client_id"]
+        ):
+
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.client_id ==
+            manager.client_id,
+
+            Subscription.status == "active"
+        )
+        .first()
+    )
+
+    if not subscription:
+
+        raise HTTPException(
+            status_code=400,
+            detail="No active subscription found"
+        )
+
+    if (
+        subscription.used_licences
+        >=
+        subscription.licence_count
+    ):
+
+        raise HTTPException(
+            status_code=400,
+            detail="No licenses available"
+        )
+
+    manager.is_active = True
+
+    subscription.used_licences += 1
+
+    db.commit()
+
+    db.refresh(manager)
+
+    return manager
+

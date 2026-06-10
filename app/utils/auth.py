@@ -193,3 +193,45 @@ def manager_create_required(
         )
 
     return current_user
+
+
+def manager_view_required(
+    current_user=Depends(
+        get_current_user
+    )
+):
+
+    allowed_roles = [
+        "ADMIN",
+        "CLIENT_ADMIN"
+    ]
+
+    if current_user["role"] not in allowed_roles:
+
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permissions"
+        )
+
+    return current_user
+
+
+def manager_view_required(
+    current_user=Depends(
+        get_current_user
+    )
+):
+
+    allowed_roles = [
+        "ADMIN",
+        "CLIENT_ADMIN"
+    ]
+
+    if current_user["role"] not in allowed_roles:
+
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permissions"
+        )
+
+    return current_user

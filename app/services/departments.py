@@ -3,7 +3,7 @@ import uuid
 from fastapi import HTTPException
 from app.models.departments import Department
 from app.models.clients import Client
-
+from app.models.users import User
 from app.models.departments import Department
 
 def create_department(
@@ -326,3 +326,52 @@ def restore_department(
     return department
 
 
+
+
+
+def get_department_manager(
+    db,
+    department_id: str
+):
+
+    department = (
+        db.query(Department)
+        .filter(
+            Department.id == department_id,
+            Department.is_active == True
+        )
+        .first()
+    )
+
+    if not department:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Department not found"
+        )
+
+    if not department.manager_id:
+
+        raise HTTPException(
+            status_code=404,
+            detail="No manager assigned"
+        )
+
+    manager = (
+        db.query(User)
+        .filter(
+            User.id == department.manager_id,
+            User.role == "MANAGER",
+            User.is_active == True
+        )
+        .first()
+    )
+
+    if not manager:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Manager not found"
+        )
+
+    return manager

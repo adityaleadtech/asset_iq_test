@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from app.services.department_manager import assign_manager_to_department
+from app.schemas.users import AssignManagerRequest, UserResponse
 from app.services.departments import (
+  
     create_department,
     create_department_for_client,
     get_departments,
@@ -8,13 +11,22 @@ from app.services.departments import (
     update_department,
     deactivate_department,
     get_department_by_id,
-    restore_department
+    restore_department,
+    get_department_manager
 )
 from app.schemas.departments import (
+
     DepartmentCreate,
     DepartmentUpdate,
     DepartmentResponse
 )
+
+from app.services.department_manager import (
+    assign_manager_to_department,
+    remove_manager_from_department
+)
+
+
 from app.utils.auth import (
     department_update_required,
     department_creator_required,
@@ -22,7 +34,7 @@ from app.utils.auth import (
     admin_required,
     department_restore_required
 )
-from app.config.dependencies import get_db
+from app.config.dependencies import get_current_user, get_db
 
 router = APIRouter(
     prefix="/departments",
@@ -134,6 +146,63 @@ def restore_existing_department(
 ):
 
     return restore_department(
+        db,
+        department_id,
+        current_user
+    )
+
+@router.patch(
+    "/{department_id}/assign-manager",
+    response_model=DepartmentResponse
+)
+def assign_manager(
+    department_id: str,
+    request: AssignManagerRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        department_update_required
+    )
+):
+
+    return assign_manager_to_department(
+        db,
+        department_id,
+        request.manager_id,
+        current_user
+    )
+
+
+@router.get(
+    "/{department_id}/manager",
+    response_model=UserResponse
+)
+def fetch_department_manager(
+    department_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        get_current_user
+    )
+):
+
+    return get_department_manager(
+        db,
+        department_id
+    )
+
+
+@router.patch(
+    "/{department_id}/remove-manager",
+    response_model=DepartmentResponse
+)
+def remove_manager(
+    department_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        department_update_required
+    )
+):
+
+    return remove_manager_from_department(
         db,
         department_id,
         current_user
