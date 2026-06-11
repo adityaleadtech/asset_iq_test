@@ -58,8 +58,12 @@ app.include_router(
 from app.routers.users import (
     router as user_router
 )
+from app.routers.services import router as services_router
 
 app.include_router(user_router)
+
+app.include_router(services_router)
+
 
 @app.get("/")
 def test():

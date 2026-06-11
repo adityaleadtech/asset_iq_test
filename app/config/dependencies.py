@@ -37,3 +37,22 @@ def get_db():
     finally:
         db.close()
 
+
+
+def service_view_required(
+    current_user=Depends(
+        get_current_user
+    )
+):
+
+    if current_user["role"] not in [
+        "ADMIN",
+        "CLIENT_ADMIN"
+    ]:
+
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permissions"
+        )
+
+    return current_user
