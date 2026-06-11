@@ -40,4 +40,18 @@ class Client(Base):
     server_default=func.now(),
     onupdate=func.now()
 )
+    address_line_1 = Column(
+    String(255),
+    nullable=False
+)
+
+address_line_2 = Column(
+    String(255),
+    nullable=True
+)
+
+address_line_3 = Column(
+    String(255),
+    nullable=True
+)
 
