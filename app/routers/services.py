@@ -4,10 +4,12 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.config.dependencies import (
+    get_current_user,
     get_db,
     service_view_required
 )
 
+from app.schemas.users import UserResponse, UserUpdate
 from app.services.services import (
     create_service,
     get_all_services,
@@ -30,6 +32,7 @@ from app.schemas.services import (
     ServiceResponse
 )
 
+from app.services.user_service import update_user
 from app.utils.auth import (
     admin_required
 )
@@ -187,3 +190,24 @@ def restore_existing_service(
         service_id
     )
 
+
+
+@router.patch(
+    "/{user_id}",
+    response_model=UserResponse
+)
+def update_existing_user(
+    user_id: str,
+    user_data: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        get_current_user
+    )
+):
+
+    return update_user(
+        db,
+        user_id,
+        user_data,
+        current_user
+    )

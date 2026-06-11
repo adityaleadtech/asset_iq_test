@@ -36,3 +36,29 @@ class SubscriptionPlanUpdate(BaseModel):
 
 
 
+
+
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+
+from datetime import datetime
+from pydantic import BaseModel
+
+
+class SubscriptionStatusResponse(
+    BaseModel
+):
+
+    client_id: str
+
+    subscribed: bool
+
+    subscription_id: str | None = None
+
+    plan_name: str | None = None
+
+    status: str | None = None
+
+    expires_at: datetime | None = None

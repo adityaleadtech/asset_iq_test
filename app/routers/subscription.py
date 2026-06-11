@@ -10,9 +10,11 @@ from app.schemas.subscription import (
     SubscriptionResponse
 )
 
+from app.schemas.subscription_plans import SubscriptionStatusResponse
 from app.services.subscription import (
     create_subscription,
     get_client_subscription,
+    get_client_subscription_status,
     get_subscription_by_id,
     update_subscription,
     suspend_subscription,

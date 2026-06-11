@@ -213,3 +213,19 @@ def get_deactivated_services(db):
         )
         .all()
     )
+
+import uuid
+
+from fastapi import HTTPException
+
+from app.models.users import User
+from app.models.roles import Role
+from app.models.service_catalogue import ServiceCatalogue
+from app.models.role_service_permissions import (
+    RoleServicePermission
+)
+
+from app.utils.security import (
+    hash_password
+)
+

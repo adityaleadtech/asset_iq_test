@@ -10,6 +10,7 @@ from app.schemas.clients import (
     ClientUpdate
 )
 
+from app.schemas.subscription_plans import SubscriptionStatusResponse
 from app.services.client_services import (
     create_client,
     get_all_clients,
@@ -20,6 +21,7 @@ from app.services.client_services import (
     reactivate_client
 )
 
+from app.services.subscription import get_client_subscription_status
 from app.utils.auth import (
     admin_required
 )
@@ -197,6 +199,23 @@ def get_client_departments(
 ):
 
     return get_departments_by_client(
+        db,
+        client_id
+    )
+
+
+
+
+@router.get(
+    "/{client_id}/subscription-status",
+    response_model=SubscriptionStatusResponse
+)
+def fetch_subscription_status(
+    client_id: str,
+    db: Session = Depends(get_db)
+):
+
+    return get_client_subscription_status(
         db,
         client_id
     )

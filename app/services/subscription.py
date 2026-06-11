@@ -290,3 +290,88 @@ def cancel_subscription(
     db.refresh(subscription)
 
     return subscription
+
+
+
+from fastapi import HTTPException
+
+from app.models.clients import Client
+from app.models.subscription import Subscription
+from app.models.subscription_plans import (
+    SubscriptionPlan
+)
+
+
+def get_client_subscription_status(
+    db,
+    client_id: str
+):
+
+    client = (
+        db.query(Client)
+        .filter(
+            Client.id == client_id,
+            Client.is_active == True
+        )
+        .first()
+    )
+
+    if not client:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Client not found"
+        )
+
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.client_id
+            ==
+            client_id,
+
+            Subscription.status
+            ==
+            "ACTIVE"
+        )
+        .first()
+    )
+
+    if not subscription:
+
+        return {
+            "client_id": client_id,
+            "subscribed": False,
+            "subscription_id": None,
+            "plan_name": None,
+            "status": None
+        }
+
+    plan = (
+        db.query(SubscriptionPlan)
+        .filter(
+            SubscriptionPlan.id
+            ==
+            subscription.plan_id
+        )
+        .first()
+    )
+
+    return {
+
+        "client_id": client_id,
+
+        "subscribed": True,
+
+        "subscription_id":
+        subscription.id,
+
+        "plan_name":
+        plan.name if plan else None,
+
+        "status":
+        subscription.status,
+
+        "expires_at":
+        subscription.end_date
+    }
