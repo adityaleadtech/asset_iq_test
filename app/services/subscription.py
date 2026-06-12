@@ -4,8 +4,12 @@ from fastapi import HTTPException
 
 from app.models.clients import Client
 from app.models.subscription import Subscription
-from app.models.subscription_plans import SubscriptionPlan
-
+from app.models.subscription_service import (
+    SubscriptionService
+)
+from app.models.service_catalogue import (
+    ServiceCatalogue
+)
 
 
 def create_subscription(
@@ -30,26 +34,11 @@ def create_subscription(
             detail="Client not found"
         )
 
-    plan = (
-        db.query(SubscriptionPlan)
-        .filter(
-            SubscriptionPlan.id == subscription_data.plan_id
-        )
-        .first()
-    )
-
-    if not plan:
-
-        raise HTTPException(
-            status_code=404,
-            detail="Subscription plan not found"
-        )
-
     existing_subscription = (
         db.query(Subscription)
         .filter(
             Subscription.client_id == client_id,
-            Subscription.status == "active"
+            Subscription.status == "ACTIVE"
         )
         .first()
     )
@@ -58,41 +47,101 @@ def create_subscription(
 
         raise HTTPException(
             status_code=400,
-            detail="Client already has an active subscription"
+            detail=(
+                "Client already has "
+                "an active subscription"
+            )
         )
 
     subscription = Subscription(
+
         id=str(uuid.uuid4()),
 
         client_id=client_id,
 
-        plan_id=subscription_data.plan_id,
-
-        status="active",
-
-        licence_count=subscription_data.licence_count,
+        licence_count=
+        subscription_data.licence_count,
 
         used_licences=0,
 
-        billing_cycle=subscription_data.billing_cycle,
+        max_assets=
+        subscription_data.max_assets,
 
-        starts_at=subscription_data.starts_at,
+        max_departments=
+        subscription_data.max_departments,
 
-        ends_at=subscription_data.ends_at,
+        price=
+        subscription_data.price,
 
-        auto_renew=subscription_data.auto_renew
+        status="ACTIVE",
+
+        starts_at=
+        subscription_data.starts_at,
+
+        ends_at=
+        subscription_data.ends_at,
+
+        auto_renew=
+        subscription_data.auto_renew
     )
 
     db.add(subscription)
+
+    db.flush()
+
+    for service_id in (
+        subscription_data.services
+    ):
+
+        service = (
+            db.query(
+                ServiceCatalogue
+            )
+            .filter(
+                ServiceCatalogue.id
+                ==
+                service_id,
+
+                ServiceCatalogue.is_active
+                ==
+                True
+            )
+            .first()
+        )
+
+        if not service:
+
+            raise HTTPException(
+                status_code=404,
+                detail=
+                (
+                    f"Service "
+                    f"{service_id} "
+                    f"not found"
+                )
+            )
+
+        db.add(
+
+            SubscriptionService(
+
+                id=str(
+                    uuid.uuid4()
+                ),
+
+                subscription_id=
+                subscription.id,
+
+                service_id=
+                service_id
+            )
+        )
 
     db.commit()
 
     db.refresh(subscription)
 
     return subscription
-
-
-from fastapi import HTTPException
 
 
 def get_client_subscription(
@@ -105,8 +154,13 @@ def get_client_subscription(
             Subscription
         )
         .filter(
-            Subscription.client_id == client_id,
-            Subscription.status == "active"
+            Subscription.client_id
+            ==
+            client_id,
+
+            Subscription.status
+            ==
+            "ACTIVE"
         )
         .first()
     )
@@ -115,10 +169,40 @@ def get_client_subscription(
 
         raise HTTPException(
             status_code=404,
-            detail="No active subscription found"
+            detail=
+            "No active subscription found"
         )
 
-    return subscription
+    services = (
+        db.query(
+            SubscriptionService,
+            ServiceCatalogue
+        )
+        .join(
+            ServiceCatalogue,
+            SubscriptionService.service_id
+            ==
+            ServiceCatalogue.id
+        )
+        .filter(
+            SubscriptionService.subscription_id
+            ==
+            subscription.id
+        )
+        .all()
+    )
+
+    return {
+        "subscription": subscription,
+        "services": [
+            {
+                "id": service.id,
+                "code": service.code,
+                "name": service.name
+            }
+            for _, service in services
+        ]
+    }
 
 
 
@@ -132,7 +216,9 @@ def get_subscription_by_id(
             Subscription
         )
         .filter(
-            Subscription.id == subscription_id
+            Subscription.id
+            ==
+            subscription_id
         )
         .first()
     )
@@ -141,7 +227,8 @@ def get_subscription_by_id(
 
         raise HTTPException(
             status_code=404,
-            detail="Subscription not found"
+            detail=
+            "Subscription not found"
         )
 
     return subscription
@@ -154,9 +241,13 @@ def update_subscription(
 ):
 
     subscription = (
-        db.query(Subscription)
+        db.query(
+            Subscription
+        )
         .filter(
-            Subscription.id == subscription_id
+            Subscription.id
+            ==
+            subscription_id
         )
         .first()
     )
@@ -165,7 +256,8 @@ def update_subscription(
 
         raise HTTPException(
             status_code=404,
-            detail="Subscription not found"
+            detail=
+            "Subscription not found"
         )
 
     update_data = (
@@ -174,28 +266,79 @@ def update_subscription(
         )
     )
 
-    if "licence_count" in update_data:
+    if (
+        "licence_count"
+        in
+        update_data
+    ):
 
         if (
-            update_data["licence_count"]
-            < subscription.used_licences
+            update_data[
+                "licence_count"
+            ]
+            <
+            subscription.used_licences
         ):
 
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Licence count cannot be "
-                    "less than used licences"
+                detail=
+                (
+                    "Licence count "
+                    "cannot be less "
+                    "than used licences"
                 )
             )
 
-    for key, value in update_data.items():
+    services = (
+        update_data.pop(
+            "services",
+            None
+        )
+    )
+
+    for key, value in (
+        update_data.items()
+    ):
 
         setattr(
             subscription,
             key,
             value
         )
+
+    if services is not None:
+
+        (
+            db.query(
+                SubscriptionService
+            )
+            .filter(
+                SubscriptionService
+                .subscription_id
+                ==
+                subscription.id
+            )
+            .delete()
+        )
+
+        for service_id in services:
+
+            db.add(
+
+                SubscriptionService(
+
+                    id=str(
+                        uuid.uuid4()
+                    ),
+
+                    subscription_id=
+                    subscription.id,
+
+                    service_id=
+                    service_id
+                )
+            )
 
     db.commit()
 
@@ -211,9 +354,13 @@ def suspend_subscription(
 ):
 
     subscription = (
-        db.query(Subscription)
+        db.query(
+            Subscription
+        )
         .filter(
-            Subscription.id == subscription_id
+            Subscription.id
+            ==
+            subscription_id
         )
         .first()
     )
@@ -222,10 +369,11 @@ def suspend_subscription(
 
         raise HTTPException(
             status_code=404,
-            detail="Subscription not found"
+            detail=
+            "Subscription not found"
         )
 
-    subscription.status = "suspended"
+    subscription.status = "SUSPENDED"
 
     db.commit()
 
@@ -240,9 +388,13 @@ def reactivate_subscription(
 ):
 
     subscription = (
-        db.query(Subscription)
+        db.query(
+            Subscription
+        )
         .filter(
-            Subscription.id == subscription_id
+            Subscription.id
+            ==
+            subscription_id
         )
         .first()
     )
@@ -251,10 +403,11 @@ def reactivate_subscription(
 
         raise HTTPException(
             status_code=404,
-            detail="Subscription not found"
+            detail=
+            "Subscription not found"
         )
 
-    subscription.status = "active"
+    subscription.status = "ACTIVE"
 
     db.commit()
 
@@ -269,9 +422,13 @@ def cancel_subscription(
 ):
 
     subscription = (
-        db.query(Subscription)
+        db.query(
+            Subscription
+        )
         .filter(
-            Subscription.id == subscription_id
+            Subscription.id
+            ==
+            subscription_id
         )
         .first()
     )
@@ -280,26 +437,17 @@ def cancel_subscription(
 
         raise HTTPException(
             status_code=404,
-            detail="Subscription not found"
+            detail=
+            "Subscription not found"
         )
 
-    subscription.status = "cancelled"
+    subscription.status = "CANCELLED"
 
     db.commit()
 
     db.refresh(subscription)
 
     return subscription
-
-
-
-from fastapi import HTTPException
-
-from app.models.clients import Client
-from app.models.subscription import Subscription
-from app.models.subscription_plans import (
-    SubscriptionPlan
-)
 
 
 def get_client_subscription_status(
@@ -310,8 +458,13 @@ def get_client_subscription_status(
     client = (
         db.query(Client)
         .filter(
-            Client.id == client_id,
-            Client.is_active == True
+            Client.id
+            ==
+            client_id,
+
+            Client.is_active
+            ==
+            True
         )
         .first()
     )
@@ -324,7 +477,9 @@ def get_client_subscription_status(
         )
 
     subscription = (
-        db.query(Subscription)
+        db.query(
+            Subscription
+        )
         .filter(
             Subscription.client_id
             ==
@@ -340,38 +495,34 @@ def get_client_subscription_status(
     if not subscription:
 
         return {
-            "client_id": client_id,
-            "subscribed": False,
-            "subscription_id": None,
-            "plan_name": None,
-            "status": None
-        }
 
-    plan = (
-        db.query(SubscriptionPlan)
-        .filter(
-            SubscriptionPlan.id
-            ==
-            subscription.plan_id
-        )
-        .first()
-    )
+            "client_id":
+            client_id,
+
+            "subscribed":
+            False,
+
+            "subscription_id":
+            None,
+
+            "status":
+            None
+        }
 
     return {
 
-        "client_id": client_id,
+        "client_id":
+        client_id,
 
-        "subscribed": True,
+        "subscribed":
+        True,
 
         "subscription_id":
         subscription.id,
-
-        "plan_name":
-        plan.name if plan else None,
 
         "status":
         subscription.status,
 
         "expires_at":
-        subscription.end_date
+        subscription.ends_at
     }

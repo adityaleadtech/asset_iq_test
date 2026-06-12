@@ -1,3 +1,4 @@
+from datetime import date
 import uuid
 
 from fastapi import HTTPException
@@ -60,14 +61,18 @@ def create_client_admin(db, admin_data):
 
     return user
 
+def login_client_admin(
+    db,
+    email: str,
+    password: str
+):
 
-def login_client_admin(db, email: str, password: str):
     admin = (
         db.query(User)
         .filter(
             User.email == email,
             User.role == "CLIENT_ADMIN",
-            User.is_active == True,
+            User.is_active == True
         )
         .first()
     )
@@ -75,9 +80,41 @@ def login_client_admin(db, email: str, password: str):
     if not admin:
         return None
 
-    if not verify_password(password, admin.password_hash):
+    if not verify_password(
+        password,
+        admin.password_hash
+    ):
         return None
 
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.client_id
+            ==
+            admin.client_id,
+
+            Subscription.status
+            ==
+            "ACTIVE"
+        )
+        .first()
+    )
+
+    if not subscription:
+
+        raise HTTPException(
+            status_code=403,
+            detail=
+            (
+                "Client does not have "
+                "an active subscription"
+            )
+        )
+    if subscription.ends_at < date.today():
+        raise HTTPException(
+        status_code=403,
+        detail="Subscription has expired"
+    )
     token = create_token(
         {
             "id": admin.id,
@@ -88,7 +125,6 @@ def login_client_admin(db, email: str, password: str):
     )
 
     return token
-
 
 def get_client_admin_profile(db, user_id: str):
     return (
@@ -121,7 +157,7 @@ def create_manager(db, manager_data, current_user):
         db.query(Subscription)
         .filter(
             Subscription.client_id == client_id,
-            Subscription.status == "active",
+            Subscription.status == "ACTIVE",
         )
         .first()
     )
@@ -249,7 +285,7 @@ def deactivate_manager(db, manager_id: str, current_user):
         db.query(Subscription)
         .filter(
             Subscription.client_id == manager.client_id,
-            Subscription.status == "active",
+            Subscription.status == "ACTIVE",
         )
         .first()
     )
@@ -295,7 +331,7 @@ def restore_manager(db, manager_id: str, current_user):
         db.query(Subscription)
         .filter(
             Subscription.client_id == manager.client_id,
-            Subscription.status == "active",
+            Subscription.status == "ACTIVE",
         )
         .first()
     )

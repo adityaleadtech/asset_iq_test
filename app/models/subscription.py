@@ -1,4 +1,5 @@
 from sqlalchemy import Column
+from sqlalchemy import Numeric
 from sqlalchemy import String
 from sqlalchemy import Integer
 from sqlalchemy import Date
@@ -25,16 +26,10 @@ class Subscription(Base):
         nullable=False
     )
 
-    plan_id = Column(
-        String(36),
-        ForeignKey("subscription_plans.id"),
-        nullable=False
-    )
-
     status = Column(
         String(50),
         nullable=False,
-        default="active"
+        default="ACTIVE"
     )
 
     licence_count = Column(
@@ -48,10 +43,19 @@ class Subscription(Base):
         default=0
     )
 
-    billing_cycle = Column(
-        String(20),
-        nullable=False,
-        default="monthly"
+    max_assets = Column(
+        Integer,
+        nullable=False
+    )
+
+    max_departments = Column(
+        Integer,
+        nullable=False
+    )
+
+    price = Column(
+        Numeric(12, 2),
+        nullable=False
     )
 
     starts_at = Column(
@@ -61,7 +65,7 @@ class Subscription(Base):
 
     ends_at = Column(
         Date,
-        nullable=True
+        nullable=False
     )
 
     auto_renew = Column(

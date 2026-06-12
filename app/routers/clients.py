@@ -10,7 +10,10 @@ from app.schemas.clients import (
     ClientUpdate
 )
 
-from app.schemas.subscription_plans import SubscriptionStatusResponse
+from app.config.dependencies import (
+    get_current_user
+)
+
 from app.services.client_services import (
     create_client,
     get_all_clients,
@@ -188,6 +191,7 @@ def deactivate_client(
 
 
 
+
 @router.get(
     "/{client_id}/departments",
     response_model=list[DepartmentResponse]
@@ -195,8 +199,23 @@ def deactivate_client(
 def get_client_departments(
     client_id: str,
     db: Session = Depends(get_db),
-    current_admin=Depends(admin_required)
+    current_user=Depends(get_current_user)
 ):
+
+    if (
+        current_user["role"]
+        == "CLIENT_ADMIN"
+    ):
+
+        if (
+            current_user["client_id"]
+            != client_id
+        ):
+
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
 
     return get_departments_by_client(
         db,
@@ -206,10 +225,6 @@ def get_client_departments(
 
 
 
-@router.get(
-    "/{client_id}/subscription-status",
-    response_model=SubscriptionStatusResponse
-)
 def fetch_subscription_status(
     client_id: str,
     db: Session = Depends(get_db)
