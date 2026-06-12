@@ -40,3 +40,24 @@ class ServiceUpdate(BaseModel):
     name: Optional[str] = None
 
     description: Optional[str] = None
+
+
+
+
+from pydantic import BaseModel
+
+
+class SubscriptionServiceResponse(
+    BaseModel
+):
+
+    id: str
+
+    code: str
+
+    name: str
+
+    class Config:
+
+        from_attributes = True
+

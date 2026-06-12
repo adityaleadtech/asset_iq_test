@@ -224,3 +224,69 @@ def reactivate_client(
     db.refresh(client)
 
     return client
+
+
+
+from fastapi import HTTPException
+
+from app.models.subscription import Subscription
+from app.models.subscription_service import (
+    SubscriptionService
+)
+from app.models.service_catalogue import (
+    ServiceCatalogue
+)
+
+
+def get_subscription_services(
+    db,
+    client_id: str,
+    current_user
+):
+
+    if (
+        current_user["role"] != "ADMIN"
+        and
+        current_user["client_id"] != client_id
+    ):
+
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied"
+        )
+
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.client_id == client_id,
+            Subscription.status == "ACTIVE"
+        )
+        .first()
+    )
+
+    if not subscription:
+
+        raise HTTPException(
+            status_code=404,
+            detail="No active subscription found"
+        )
+
+    services = (
+        db.query(
+            ServiceCatalogue
+        )
+        .join(
+            SubscriptionService,
+            SubscriptionService.service_id
+            ==
+            ServiceCatalogue.id
+        )
+        .filter(
+            SubscriptionService.subscription_id
+            ==
+            subscription.id
+        )
+        .all()
+    )
+
+    return services

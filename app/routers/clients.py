@@ -18,6 +18,7 @@ from app.services.client_services import (
     create_client,
     get_all_clients,
     get_client_by_id,
+    get_subscription_services,
     update_client,
     delete_client,
     get_deactivated_clients,
@@ -233,4 +234,17 @@ def fetch_subscription_status(
     return get_client_subscription_status(
         db,
         client_id
+    )
+@router.get(
+    "/{client_id}/subscriptions/services"
+)
+def fetch_subscription_services(
+    client_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    return get_subscription_services(
+        db,
+        client_id,
+        current_user
     )

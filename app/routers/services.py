@@ -9,7 +9,12 @@ from app.config.dependencies import (
     service_view_required
 )
 
+from app.schemas.services import (
+    SubscriptionServiceResponse
+)
+
 from app.schemas.users import UserResponse, UserUpdate
+from app.services.client_services import get_subscription_services
 from app.services.services import (
     create_service,
     get_all_services,
@@ -209,5 +214,24 @@ def update_existing_user(
         db,
         user_id,
         user_data,
+        current_user
+    )
+
+
+@router.get(
+    "/{client_id}/subscriptions/services",
+    response_model=list[
+        SubscriptionServiceResponse
+    ]
+)
+def fetch_subscription_services(
+    client_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+
+    return get_subscription_services(
+        db,
+        client_id,
         current_user
     )

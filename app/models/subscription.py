@@ -78,3 +78,4 @@ class Subscription(Base):
         DateTime,
         server_default=func.now()
     )
+

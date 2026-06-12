@@ -8,6 +8,7 @@ from sqlalchemy.sql import func
 from app.config.database import Base
 
 
+
 class ServiceCatalogue(Base):
 
     __tablename__ = "service_catalogue"

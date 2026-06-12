@@ -108,11 +108,3 @@ def has_permission(
         return permission.can_delete
 
     return False
-
-
-has_permission(
-    db,
-    current_user,
-    "ASSET_MANAGEMENT",
-    "CREATE"
-)
