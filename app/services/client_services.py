@@ -7,6 +7,7 @@ import uuid
 import re
 from sqlalchemy.orm import Session
 from app.models.clients import Client
+from app.models.users import User
 
 def generate_unique_client_code(db: Session, base_name: str) -> str:
     """
@@ -290,3 +291,95 @@ def get_subscription_services(
     )
 
     return services
+
+
+
+
+
+def get_client_admin(
+    db,
+    client_id: str
+):
+
+    admin = (
+        db.query(User)
+        .filter(
+            User.client_id == client_id,
+            User.role == "CLIENT_ADMIN"
+        )
+        .first()
+    )
+
+    if not admin:
+        raise HTTPException(
+            status_code=404,
+            detail="Client Admin not found"
+        )
+
+    return admin
+
+
+
+def get_client_admin_details(
+    db,
+    admin_id: str
+):
+
+    admin = (
+        db.query(User)
+        .filter(
+            User.id == admin_id,
+            User.role == "CLIENT_ADMIN"
+        )
+        .first()
+    )
+
+    if not admin:
+        raise HTTPException(
+            status_code=404,
+            detail="Client Admin not found"
+        )
+
+    return admin
+
+
+def update_client_admin(
+    db,
+    admin_id: str,
+    admin_data
+):
+
+    admin = (
+        db.query(User)
+        .filter(
+            User.id == admin_id,
+            User.role == "CLIENT_ADMIN"
+        )
+        .first()
+    )
+
+    if not admin:
+        raise HTTPException(
+            status_code=404,
+            detail="Client Admin not found"
+        )
+
+    update_data = (
+        admin_data.model_dump(
+            exclude_unset=True
+        )
+    )
+
+    for key, value in update_data.items():
+
+        setattr(
+            admin,
+            key,
+            value
+        )
+
+    db.commit()
+
+    db.refresh(admin)
+
+    return admin

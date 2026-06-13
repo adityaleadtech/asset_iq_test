@@ -4,6 +4,7 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.models import subscription
 from app.models.clients import Client
 from app.models.role_service_permissions import RoleServicePermission
 from app.models.roles import Role
@@ -12,7 +13,9 @@ from app.models.subscription import Subscription
 from app.models.users import User
 from app.utils.jwthandler import create_token
 from app.utils.security import hash_password, verify_password
-
+from app.models.subscription_service import (
+    SubscriptionService
+)
 
 # ── Client Admin ──────────────────────────────────────────────────────────────
 
@@ -377,6 +380,40 @@ def create_user(db, user_data, current_user):
 
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+    
+    # Check subscription and license availability
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.client_id == client_id,
+            Subscription.status == "ACTIVE"
+        )
+        .first()
+    )
+
+    if not subscription:
+        raise HTTPException(
+            status_code=400,
+            detail="No active subscription found"
+        )
+
+    # Check license limit before creating user
+    if subscription.used_licences >= subscription.licence_count:
+        raise HTTPException(
+            status_code=400,
+            detail="No licenses available"
+        )
+
+    allowed_service_ids = {
+        row.service_id
+        for row in (
+            db.query(SubscriptionService)
+            .filter(
+                SubscriptionService.subscription_id == subscription.id
+            )
+            .all()
+        )
+    }
 
     role = Role(
         id=str(uuid.uuid4()),
@@ -406,6 +443,17 @@ def create_user(db, user_data, current_user):
                 detail=f"Service {permission.service_id} not found",
             )
 
+        # Add subscription service validation
+        if permission.service_id not in allowed_service_ids:
+            db.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Service {permission.service_id} "
+                    "is not included in subscription"
+                )
+            )
+
         db.add(
             RoleServicePermission(
                 id=str(uuid.uuid4()),
@@ -433,11 +481,14 @@ def create_user(db, user_data, current_user):
     )
 
     db.add(user)
+    
+    # Increment used licenses
+    subscription.used_licences += 1
+    
     db.commit()
     db.refresh(user)
 
     return user
-
 
 def get_users(db, current_user):
     if current_user["role"] == "ADMIN":
@@ -484,6 +535,33 @@ def update_user(db, user_id: str, user_data, current_user):
         setattr(user, key, value)
 
     if user_data.role:
+        # Get subscription and allowed services
+        subscription = (
+            db.query(Subscription)
+            .filter(
+                Subscription.client_id == user.client_id,
+                Subscription.status == "ACTIVE"
+            )
+            .first()
+        )
+
+        if not subscription:
+            raise HTTPException(
+                status_code=400,
+                detail="No active subscription found"
+            )
+
+        allowed_service_ids = {
+            row.service_id
+            for row in (
+                db.query(SubscriptionService)
+                .filter(
+                    SubscriptionService.subscription_id == subscription.id
+                )
+                .all()
+            )
+        }
+
         role = db.query(Role).filter(Role.id == user.custom_role_id).first()
 
         if role:
@@ -495,6 +573,17 @@ def update_user(db, user_id: str, user_data, current_user):
             ).delete()
 
             for permission in user_data.role.permissions:
+                # Validate service exists in subscription
+                if permission.service_id not in allowed_service_ids:
+                    db.rollback()
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Service {permission.service_id} "
+                            "is not included in subscription"
+                        )
+                    )
+                
                 db.add(
                     RoleServicePermission(
                         id=str(uuid.uuid4()),
@@ -510,8 +599,7 @@ def update_user(db, user_id: str, user_data, current_user):
     db.commit()
     db.refresh(user)
 
-    return user
-
+    return user                                                                                                     
 
 def deactivate_user(db, user_id: str, current_user):
     user = db.query(User).filter(User.id == user_id).first()
@@ -523,7 +611,22 @@ def deactivate_user(db, user_id: str, current_user):
         if user.client_id != current_user["client_id"]:
             raise HTTPException(status_code=403, detail="Access denied")
 
+    # Get subscription before deactivating
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.client_id == user.client_id,
+            Subscription.status == "ACTIVE"
+        )
+        .first()
+    )
+
     user.is_active = False
+    
+    # Decrement used licenses if subscription exists
+    if subscription:
+        subscription.used_licences = max(0, subscription.used_licences - 1)
+    
     db.commit()
     db.refresh(user)
 
@@ -540,7 +643,33 @@ def restore_user(db, user_id: str, current_user):
         if user.client_id != current_user["client_id"]:
             raise HTTPException(status_code=403, detail="Access denied")
 
+    # Check subscription and license availability before restoring
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.client_id == user.client_id,
+            Subscription.status == "ACTIVE"
+        )
+        .first()
+    )
+
+    if not subscription:
+        raise HTTPException(
+            status_code=400,
+            detail="No active subscription found"
+        )
+
+    if subscription.used_licences >= subscription.licence_count:
+        raise HTTPException(
+            status_code=400,
+            detail="No licenses available"
+        )
+
     user.is_active = True
+    
+    # Increment used licenses
+    subscription.used_licences += 1
+    
     db.commit()
     db.refresh(user)
 

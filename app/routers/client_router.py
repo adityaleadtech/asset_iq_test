@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.config.dependencies import get_db
+from app.schemas.clients import ClientAdminUpdate
 from app.schemas.users import (
     ClientAdminCreate,
     ClientAdminLogin,
@@ -9,6 +10,8 @@ from app.schemas.users import (
     TokenResponse,
     UserResponse,
 )
+from app.services.client_services import get_client_admin, get_client_admin_details, update_client_admin
+from app.services.client_services import get_client_admin
 from app.services.user_service import (
     create_client_admin,
     get_client_admin_profile,
@@ -56,3 +59,40 @@ def get_profile(
         raise HTTPException(status_code=404, detail="Client Admin not found")
 
     return user
+
+
+
+
+@router.get(
+    "/{client_id}/admin",
+    response_model=UserResponse
+)
+def fetch_client_admin(
+    client_id: str,
+    db: Session = Depends(get_db),
+    current_admin=Depends(admin_required)
+):
+
+    return get_client_admin(
+        db,
+        client_id
+    )
+
+
+
+@router.patch(
+    "/admin/{admin_id}",
+    response_model=UserResponse
+)
+def update_client_admin_route(
+    admin_id: str,
+    admin_data: ClientAdminUpdate,
+    db: Session = Depends(get_db),
+    current_admin=Depends(admin_required)
+):
+
+    return update_client_admin(
+        db,
+        admin_id,
+        admin_data
+    )

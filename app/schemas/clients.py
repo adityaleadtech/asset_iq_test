@@ -46,3 +46,17 @@ class ClientUpdate(BaseModel):
     logo_url: str | None = None
     is_active: bool | None = None
     # Note: client_code cannot be updated
+
+
+
+class ClientAdminUpdate(
+    BaseModel
+):
+
+    full_name: str | None = None
+
+    email: str | None = None
+
+    phone: str | None = None
+
+    is_active: bool | None = None
