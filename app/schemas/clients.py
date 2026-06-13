@@ -49,6 +49,9 @@ class ClientUpdate(BaseModel):
 
 
 
+from pydantic import BaseModel
+
+
 class ClientAdminUpdate(
     BaseModel
 ):

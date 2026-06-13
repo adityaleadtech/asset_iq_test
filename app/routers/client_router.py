@@ -10,6 +10,11 @@ from app.schemas.users import (
     TokenResponse,
     UserResponse,
 )
+
+from app.config.dependencies import (
+    get_db,
+    get_current_user
+)
 from app.services.client_services import get_client_admin, get_client_admin_details, update_client_admin
 from app.services.client_services import get_client_admin
 from app.services.user_service import (
@@ -63,6 +68,9 @@ def get_profile(
 
 
 
+
+
+
 @router.get(
     "/{client_id}/admin",
     response_model=UserResponse
@@ -70,14 +78,16 @@ def get_profile(
 def fetch_client_admin(
     client_id: str,
     db: Session = Depends(get_db),
-    current_admin=Depends(admin_required)
+    current_user=Depends(
+        get_current_user
+    )
 ):
 
     return get_client_admin(
         db,
-        client_id
+        client_id,
+        current_user
     )
-
 
 
 @router.patch(
@@ -88,7 +98,9 @@ def update_client_admin_route(
     admin_id: str,
     admin_data: ClientAdminUpdate,
     db: Session = Depends(get_db),
-    current_admin=Depends(admin_required)
+    current_admin=Depends(
+        admin_required
+    )
 ):
 
     return update_client_admin(

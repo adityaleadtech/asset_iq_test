@@ -296,21 +296,38 @@ def get_subscription_services(
 
 
 
+from fastapi import HTTPException
+
+from app.models.users import User
+
+
 def get_client_admin(
     db,
-    client_id: str
+    client_id: str,
+    current_user
 ):
+
+    if current_user["role"] != "ADMIN":
+
+        if current_user["client_id"] != client_id:
+
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
 
     admin = (
         db.query(User)
         .filter(
             User.client_id == client_id,
-            User.role == "CLIENT_ADMIN"
+            User.role == "CLIENT_ADMIN",
+            User.is_active == True
         )
         .first()
     )
 
     if not admin:
+
         raise HTTPException(
             status_code=404,
             detail="Client Admin not found"
@@ -319,6 +336,47 @@ def get_client_admin(
     return admin
 
 
+def update_client_admin(
+    db,
+    admin_id: str,
+    admin_data
+):
+
+    admin = (
+        db.query(User)
+        .filter(
+            User.id == admin_id,
+            User.role == "CLIENT_ADMIN"
+        )
+        .first()
+    )
+
+    if not admin:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Client Admin not found"
+        )
+
+    update_data = (
+        admin_data.model_dump(
+            exclude_unset=True
+        )
+    )
+
+    for key, value in update_data.items():
+
+        setattr(
+            admin,
+            key,
+            value
+        )
+
+    db.commit()
+
+    db.refresh(admin)
+
+    return admin
 
 def get_client_admin_details(
     db,
