@@ -5,6 +5,7 @@ from app.models.clients import Client
 from app.models.users import User
 from app.models.subscription import Subscription
 
+
 # Helper function to validate department limit
 def validate_department_limit(
     db,
@@ -46,37 +47,67 @@ def validate_department_limit(
 
     return subscription
 
-# Helper function to validate user license limit
-def validate_user_limit(
+
+# Helper function to validate manager
+def validate_manager(
     db,
+    manager_id: str,
     client_id: str
 ):
-    subscription = (
-        db.query(Subscription)
+    if not manager_id:
+        return None
+        
+    manager = (
+        db.query(User)
         .filter(
-            Subscription.client_id == client_id,
-            Subscription.status == "ACTIVE"
+            User.id == manager_id,
+            User.role == "MANAGER",
+            User.is_active == True
         )
         .first()
     )
 
-    if not subscription:
+    if not manager:
         raise HTTPException(
-            status_code=400,
-            detail="No active subscription found"
+            status_code=404,
+            detail="Manager not found"
         )
 
-    if subscription.used_licences >= subscription.licence_count:
+    if manager.client_id != client_id:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"User license limit reached. "
-                f"Maximum allowed: "
-                f"{subscription.licence_count}"
-            )
+            detail="Manager belongs to another client"
         )
+    
+    return manager
 
-    return subscription
+
+# Helper function to validate parent department
+def validate_parent_department(
+    db,
+    parent_department_id: str,
+    client_id: str
+):
+    if not parent_department_id:
+        return None
+        
+    parent_department = (
+        db.query(Department)
+        .filter(
+            Department.id == parent_department_id,
+            Department.client_id == client_id,
+            Department.is_active == True
+        )
+        .first()
+    )
+
+    if not parent_department:
+        raise HTTPException(
+            status_code=404,
+            detail="Parent department not found"
+        )
+    
+    return parent_department
 
 
 def create_department(
@@ -84,7 +115,6 @@ def create_department(
     department_data,
     current_user
 ):
-    
     existing_department = (
         db.query(Department)
         .filter(
@@ -106,6 +136,22 @@ def create_department(
         db,
         current_user["client_id"]
     )
+    
+    # Validate manager if provided
+    if department_data.manager_id:
+        validate_manager(
+            db,
+            department_data.manager_id,
+            current_user["client_id"]
+        )
+    
+    # Validate parent department if provided
+    if department_data.parent_department_id:
+        validate_parent_department(
+            db,
+            department_data.parent_department_id,
+            current_user["client_id"]
+        )
 
     department = Department(
         id=str(uuid.uuid4()),
@@ -130,7 +176,6 @@ def create_department_for_client(
     client_id: str,
     department_data
 ):
-
     client = (
         db.query(Client)
         .filter(
@@ -167,6 +212,22 @@ def create_department_for_client(
         db,
         client_id
     )
+    
+    # Validate manager if provided
+    if department_data.manager_id:
+        validate_manager(
+            db,
+            department_data.manager_id,
+            client_id
+        )
+    
+    # Validate parent department if provided
+    if department_data.parent_department_id:
+        validate_parent_department(
+            db,
+            department_data.parent_department_id,
+            client_id
+        )
 
     department = Department(
         id=str(uuid.uuid4()),
@@ -188,13 +249,21 @@ def create_department_for_client(
 
 def get_departments(
     db,
-    client_id: str
+    current_user
 ):
-
+    # Platform Admin sees all departments
+    if current_user["role"] == "ADMIN":
+        return (
+            db.query(Department)
+            .filter(Department.is_active == True)
+            .all()
+        )
+    
+    # Client Admin and Manager see only their client's departments
     return (
         db.query(Department)
         .filter(
-            Department.client_id == client_id,
+            Department.client_id == current_user["client_id"],
             Department.is_active == True
         )
         .all()
@@ -205,7 +274,6 @@ def get_departments_by_client(
     db,
     client_id: str
 ):
-
     return (
         db.query(Department)
         .filter(
@@ -222,7 +290,6 @@ def update_department(
     department_data,
     current_user
 ):
-
     department = (
         db.query(Department)
         .filter(
@@ -247,6 +314,23 @@ def update_department(
     update_data = department_data.model_dump(
         exclude_unset=True
     )
+    
+    # Validate manager if being updated
+    if "manager_id" in update_data:
+        validate_manager(
+            db,
+            update_data["manager_id"],
+            department.client_id
+        )
+    
+    # Validate parent department if being updated
+    if "parent_department_id" in update_data:
+        if update_data["parent_department_id"]:
+            validate_parent_department(
+                db,
+                update_data["parent_department_id"],
+                department.client_id
+            )
 
     for key, value in update_data.items():
         setattr(
@@ -266,7 +350,6 @@ def deactivate_department(
     department_id: str,
     current_user
 ):
-
     department = (
         db.query(Department)
         .filter(
@@ -300,7 +383,6 @@ def get_department_by_id(
     department_id: str,
     current_user
 ):
-
     department = (
         db.query(Department)
         .filter(
@@ -330,7 +412,6 @@ def get_deactivated_departments_by_client(
     db,
     client_id: str
 ):
-
     return (
         db.query(Department)
         .filter(
@@ -346,7 +427,6 @@ def restore_department(
     department_id: str,
     current_user
 ):
-
     department = (
         db.query(Department)
         .filter(
@@ -385,7 +465,6 @@ def get_department_manager(
     db,
     department_id: str
 ):
-
     department = (
         db.query(Department)
         .filter(
@@ -424,146 +503,3 @@ def get_department_manager(
         )
 
     return manager
-
-
-# ── User License Limit Functions ──────────────────────────────────────────────
-
-def create_user_with_limit(
-    db,
-    user_data,
-    current_user
-):
-    # Validate user license limit before creating
-    if current_user["role"] == "ADMIN":
-        if not user_data.client_id:
-            raise HTTPException(status_code=400, detail="client_id is required")
-        client_id = user_data.client_id
-    else:
-        client_id = current_user["client_id"]
-    
-    validate_user_limit(db, client_id)
-    
-    # Continue with existing user creation logic
-    existing_user = (
-        db.query(User)
-        .filter(User.email == user_data.email)
-        .first()
-    )
-
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already exists")
-
-    client = (
-        db.query(Client)
-        .filter(Client.id == client_id, Client.is_active == True)
-        .first()
-    )
-
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-
-    user = User(
-        id=str(uuid.uuid4()),
-        client_id=client_id,
-        department_id=user_data.department_id,
-        email=user_data.email,
-        password_hash=hash_password(user_data.password),  # Make sure to import hash_password
-        full_name=user_data.full_name,
-        phone=user_data.phone,
-        employee_id=user_data.employee_id,
-        role="USER",
-        is_active=True,
-    )
-
-    db.add(user)
-    
-    # Update subscription used_licences
-    subscription = (
-        db.query(Subscription)
-        .filter(
-            Subscription.client_id == client_id,
-            Subscription.status == "ACTIVE"
-        )
-        .first()
-    )
-    
-    if subscription:
-        subscription.used_licences += 1
-    
-    db.commit()
-    db.refresh(user)
-
-    return user
-
-
-def restore_user_with_limit(
-    db,
-    user_id: str,
-    current_user
-):
-    user = db.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    if current_user["role"] != "ADMIN":
-        if user.client_id != current_user["client_id"]:
-            raise HTTPException(status_code=403, detail="Access denied")
-
-    # Validate user limit before restoring
-    validate_user_limit(db, user.client_id)
-
-    user.is_active = True
-    
-    # Update subscription used_licences
-    subscription = (
-        db.query(Subscription)
-        .filter(
-            Subscription.client_id == user.client_id,
-            Subscription.status == "ACTIVE"
-        )
-        .first()
-    )
-    
-    if subscription:
-        subscription.used_licences += 1
-    
-    db.commit()
-    db.refresh(user)
-
-    return user
-
-
-def deactivate_user_with_limit(
-    db,
-    user_id: str,
-    current_user
-):
-    user = db.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    if current_user["role"] != "ADMIN":
-        if user.client_id != current_user["client_id"]:
-            raise HTTPException(status_code=403, detail="Access denied")
-
-    user.is_active = False
-    
-    # Update subscription used_licences
-    subscription = (
-        db.query(Subscription)
-        .filter(
-            Subscription.client_id == user.client_id,
-            Subscription.status == "ACTIVE"
-        )
-        .first()
-    )
-    
-    if subscription:
-        subscription.used_licences = max(0, subscription.used_licences - 1)
-    
-    db.commit()
-    db.refresh(user)
-
-    return user

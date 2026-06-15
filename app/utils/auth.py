@@ -235,3 +235,111 @@ def manager_view_required(
         )
 
     return current_user
+
+
+
+
+from fastapi import Depends
+from fastapi import HTTPException
+
+from app.config.dependencies import (
+    get_current_user,
+    get_db
+)
+
+'''
+
+
+
+
+from app.utils.permissions import (
+    has_permission
+)
+
+
+def service_permission_required(
+    service_code: str,
+    action: str
+):
+
+    def permission_checker(
+
+        db=Depends(get_db),
+
+        current_user=Depends(
+            get_current_user
+        )
+    ):
+
+        allowed = has_permission(
+            db=db,
+            user=current_user,
+            service_code=service_code,
+            action=action
+        )
+
+        if not allowed:
+
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"{action} permission "
+                    f"required for "
+                    f"{service_code}"
+                )
+            )
+
+        return current_user
+
+    return permission_checker
+
+
+    '''
+
+
+from fastapi import Depends
+from fastapi import HTTPException
+
+from app.config.dependencies import (
+    get_current_user,
+    get_db
+)
+
+from app.config.permission import (
+    has_permission
+)
+def service_permission_required(
+    service_code: str,
+    action: str
+):
+
+    def permission_checker(
+
+        db=Depends(get_db),
+
+        current_user=Depends(
+            get_current_user
+        )
+    ):
+
+        allowed = has_permission(
+            db,
+            current_user,
+            service_code,
+            action
+        )
+
+        if not allowed:
+
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Permission denied. "
+                    f"Required: "
+                    f"{service_code}.{action}"
+                )
+            )
+
+        return current_user
+
+    return permission_checker

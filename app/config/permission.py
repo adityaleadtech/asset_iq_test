@@ -51,3 +51,76 @@ def require_permission(
         return True
 
     return permission_checker
+
+
+
+from app.models.role_service_permissions import (
+    RoleServicePermission
+)
+
+from app.models.service_catalogue import (
+    ServiceCatalogue
+)
+
+
+def has_permission(
+    db,
+    user,
+    service_code: str,
+    action: str
+):
+
+    # Platform Admin always allowed
+    if user["role"] == "ADMIN":
+        return True
+
+    # Client Admin always allowed
+    if user["role"] == "CLIENT_ADMIN":
+        return True
+
+    role_id = user.get(
+        "custom_role_id"
+    )
+
+    if not role_id:
+        return False
+
+    permission = (
+        db.query(
+            RoleServicePermission
+        )
+        .join(
+            ServiceCatalogue,
+            RoleServicePermission.service_id
+            ==
+            ServiceCatalogue.id
+        )
+        .filter(
+            RoleServicePermission.role_id
+            ==
+            role_id,
+
+            ServiceCatalogue.code
+            ==
+            service_code
+        )
+        .first()
+    )
+
+    if not permission:
+        return False
+
+    action_map = {
+        "create": permission.can_create,
+        "read": permission.can_read,
+        "update": permission.can_update,
+        "delete": permission.can_delete
+    }
+
+    return action_map.get(
+        action,
+        False
+    )
+
+
+

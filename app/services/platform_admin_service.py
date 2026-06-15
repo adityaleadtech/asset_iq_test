@@ -11,6 +11,7 @@ def get_all_platform_admins(db:Session):
 
 
 def create_platform_admin(db,platform_admin_data):
+    #use ADMIN in role and not admin 
     admin= PlatformAdmin(
         id=str(uuid.uuid4()),
         email=platform_admin_data.email,

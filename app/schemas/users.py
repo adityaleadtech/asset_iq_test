@@ -218,3 +218,42 @@ class UserUpdate(
     department_id: str | None = None
 
     role: UserRoleCreate | None = None
+
+
+
+
+from pydantic import BaseModel
+
+
+class UserLogin(
+    BaseModel
+):
+    email: str
+    password: str
+
+
+
+from pydantic import BaseModel
+
+
+class UserServiceResponse(
+    BaseModel
+):
+    service_id: str
+
+    code: str
+
+    name: str
+
+    description: str | None = None
+
+    can_create: bool
+
+    can_read: bool
+
+    can_update: bool
+
+    can_delete: bool
+
+    class Config:
+        from_attributes = True
