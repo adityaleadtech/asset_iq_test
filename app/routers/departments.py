@@ -223,3 +223,4 @@ def remove_manager(
 )
 ):
     return remove_manager_from_department(db, department_id, current_user)
+

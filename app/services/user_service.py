@@ -873,7 +873,7 @@ def login_user(
         db.query(User)
         .filter(
             User.email == email,
-            User.role == "USER",
+            User.role.in_(["USER", "MANAGER"]),
             User.is_active == True
         )
         .first()

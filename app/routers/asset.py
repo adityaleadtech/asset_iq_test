@@ -1,38 +1,25 @@
-from fastapi import APIRouter
-from fastapi import Depends
-
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.config.dependencies import get_db
-
-from app.utils.auth import (
-    client_admin_required,
-    admin_required,
-    service_permission_required
-)
-
+from app.utils.auth import service_permission_required
 from app.schemas.assets import (
     AssetCreate,
     AssetResponse,
-    AssetUpdate,
     AssetUpdate
 )
-
 from app.services.assets import (
     create_asset,
     deactivate_asset,
     get_asset_by_id,
     get_assets,
-    update_asset,
     update_asset
 )
-
 
 router = APIRouter(
     prefix="/assets",
     tags=["Assets"]
 )
-
 
 @router.post(
     "",
@@ -55,51 +42,53 @@ router = APIRouter(
     Status Logic:
     - Assigned User → ASSIGNED
     - No Assigned User → AVAILABLE
+
+    Required Permission:
+    - ASSET_MANAGEMENT.create
     """
 )
 def create_new_asset(
     asset_data: AssetCreate,
     db: Session = Depends(get_db),
-   current_user=Depends(
-    service_permission_required(
-        "ASSET_MANAGEMENT",
-        "create"
+    current_user: dict = Depends(
+        service_permission_required("ASSET_MANAGEMENT", "create")
     )
-)
 ):
-    return create_asset(
-        db,
-        asset_data,
-        current_user
-    )
-
+    return create_asset(db, asset_data, current_user)
 
 @router.get(
     "",
     response_model=list[AssetResponse],
-    summary="Fetch All Assets",
+    summary="Fetch Assets",
     description="""
-    Fetch all assets based on user role.
-    
-    Access:
-    - ADMIN: Sees all assets across all clients
-    - CLIENT_ADMIN: Sees only their client's assets
+    Fetch assets visible to the current user.
+
+    Role-Based Visibility:
+
+    **ADMIN**
+    - Can view all assets across all clients
+
+    **CLIENT_ADMIN**
+    - Can view all assets belonging to their client
+
+    **MANAGER**
+    - Can view assets belonging to departments they manage
+    - If a manager manages multiple departments, they see all of them
+
+    **USER**
+    - Can view only assets assigned to them
+
+    Required Permission:
+    - ASSET_MANAGEMENT.read
     """
 )
 def fetch_all_assets(
     db: Session = Depends(get_db),
-   current_user=Depends(
-    service_permission_required(
-        "ASSET_MANAGEMENT",
-        "read"
+    current_user: dict = Depends(
+        service_permission_required("ASSET_MANAGEMENT", "read")
     )
-)
 ):
-    return get_assets(
-        db,
-        current_user
-    )
-
+    return get_assets(db, current_user)
 
 @router.get(
     "/{asset_id}",
@@ -107,77 +96,84 @@ def fetch_all_assets(
     summary="Fetch Asset by ID",
     description="""
     Fetch a single asset by its ID.
-    
-    Access:
-    - ADMIN: Can fetch any asset
-    - CLIENT_ADMIN: Can only fetch assets belonging to their client
+
+    Role-Based Access:
+
+    **ADMIN**
+    - Can fetch any asset
+
+    **CLIENT_ADMIN**
+    - Can only fetch assets belonging to their client
+
+    **MANAGER**
+    - Can only fetch assets belonging to departments they manage
+    - If a manager manages multiple departments, they can access assets from any of them
+
+    **USER**
+    - Can only fetch assets assigned to them
+
+    Required Permission:
+    - ASSET_MANAGEMENT.read
     """
 )
 def fetch_asset(
     asset_id: str,
     db: Session = Depends(get_db),
-  current_user=Depends(
-    service_permission_required(
-        "ASSET_MANAGEMENT",
-        "read"
+    current_user: dict = Depends(
+        service_permission_required("ASSET_MANAGEMENT", "read")
     )
-)
 ):
-    return get_asset_by_id(
-        db,
-        asset_id,
-        current_user
-    )
-
+    return get_asset_by_id(db, asset_id, current_user)
 
 @router.patch(
     "/{asset_id}",
     response_model=AssetResponse,
-    summary="Update Asset"
+    summary="Update Asset",
+    description="""
+    Update an existing asset.
+
+    Access:
+    - CLIENT_ADMIN only
+
+    Validation on Update:
+    - If category is updated, it must belong to client
+    - If type is updated, it must belong to client and selected category
+    - If department is updated, it must belong to client
+    - If assigned user is updated, they must belong to client
+
+    Required Permission:
+    - ASSET_MANAGEMENT.update
+    """
 )
 def update_existing_asset(
     asset_id: str,
     asset_data: AssetUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(
-        service_permission_required(
-            "ASSET_MANAGEMENT",
-            "update"
-        )
+    current_user: dict = Depends(
+        service_permission_required("ASSET_MANAGEMENT", "update")
     )
 ):
-
-    return update_asset(
-        db,
-        asset_id,
-        asset_data,
-        current_user
-    )
-
-
+    return update_asset(db, asset_id, asset_data, current_user)
 
 @router.delete(
     "/{asset_id}",
-    summary="Deactivate Asset"
+    summary="Deactivate Asset",
+    description="""
+    Deactivate an asset.
+
+    Access:
+    - CLIENT_ADMIN only
+
+    Required Permission:
+    - ASSET_MANAGEMENT.delete
+    """
 )
 def delete_asset(
     asset_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(
-        service_permission_required(
-            "ASSET_MANAGEMENT",
-            "delete"
-        )
+    current_user: dict = Depends(
+        service_permission_required("ASSET_MANAGEMENT", "delete")
     )
 ):
-
-    deactivate_asset(
-        db,
-        asset_id,
-        current_user
-    )
-
-    return {
-        "message":
-        "Asset deactivated successfully"
-    }
+    deactivate_asset(db, asset_id, current_user)
+    return {"message": "Asset deactivated successfully"}

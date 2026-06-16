@@ -44,6 +44,12 @@ app.include_router(
     dashboards.router
 )
 
+from app.routers import manager
+
+app.include_router(
+    manager.router
+)
+
 @app.get("/")
 def test():
     return {"message": "started"}

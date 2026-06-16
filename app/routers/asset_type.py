@@ -44,9 +44,12 @@ router = APIRouter(
 def create_new_asset_type(
     type_data: AssetTypeCreate,
     db: Session = Depends(get_db),
-    current_user=service_permission_required(
-    "ASSET_MANAGEMENT",
-    "create"
+    current_user=Depends(
+    service_permission_required(
+        "ASSET_MANAGEMENT",
+        "create"
+    )
+
 )
 ):
 
@@ -69,9 +72,11 @@ def create_new_asset_type(
 )
 def fetch_asset_types(
     db: Session = Depends(get_db),
-    current_user=service_permission_required(
-    "ASSET_MANAGEMENT",
-    "read"
+current_user=Depends(
+    service_permission_required(
+        "ASSET_MANAGEMENT",
+        "read"
+    )
 )
 ):
 
@@ -104,7 +109,12 @@ def fetch_asset_types(
 def fetch_asset_types_by_category(
     category_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(client_admin_required)
+    current_user=Depends(
+    service_permission_required(
+        "ASSET_MANAGEMENT",
+        "read"
+    )
+)
 ):
 
     return get_asset_types_by_category(
@@ -121,7 +131,12 @@ def fetch_asset_types_by_category(
 def fetch_asset_type(
     type_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(client_admin_required)
+    current_user=Depends(
+        service_permission_required(
+            "ASSET_MANAGEMENT",
+            "read"
+        )
+    )
 ):
 
     return get_asset_type_by_id(
@@ -140,10 +155,12 @@ def update_existing_asset_type(
     type_id: str,
     type_data: AssetTypeUpdate,
     db: Session = Depends(get_db),
-    current_user=service_permission_required(
-    "ASSET_MANAGEMENT",
-    "update"
-)
+    current_user=Depends(
+        service_permission_required(
+            "ASSET_MANAGEMENT",
+            "update"
+        )
+    )
 ):
 
     return update_asset_type(
@@ -161,11 +178,13 @@ def update_existing_asset_type(
 def delete_asset_type(
     type_id: str,
     db: Session = Depends(get_db),
-    current_user=service_permission_required(
-    "ASSET_MANAGEMENT",
-    "delete"
-)
-):
+    current_user=Depends(
+        service_permission_required(
+            "ASSET_MANAGEMENT",
+            "delete"
+        )
+    )
+    ):
 
     deactivate_asset_type(
         db,

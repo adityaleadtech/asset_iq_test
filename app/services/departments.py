@@ -1,16 +1,21 @@
 import uuid
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 from app.models.departments import Department
 from app.models.clients import Client
 from app.models.users import User
 from app.models.subscription import Subscription
 
 
-# Helper function to validate department limit
+# ============ HELPER FUNCTIONS ============
+
 def validate_department_limit(
-    db,
+    db: Session,
     client_id: str
 ):
+    """
+    Validate that department limit hasn't been exceeded
+    """
     subscription = (
         db.query(Subscription)
         .filter(
@@ -48,12 +53,14 @@ def validate_department_limit(
     return subscription
 
 
-# Helper function to validate manager
 def validate_manager(
-    db,
+    db: Session,
     manager_id: str,
     client_id: str
 ):
+    """
+    Validate that a user exists and is a manager
+    """
     if not manager_id:
         return None
         
@@ -82,12 +89,14 @@ def validate_manager(
     return manager
 
 
-# Helper function to validate parent department
 def validate_parent_department(
-    db,
+    db: Session,
     parent_department_id: str,
     client_id: str
 ):
+    """
+    Validate that parent department exists and belongs to client
+    """
     if not parent_department_id:
         return None
         
@@ -110,11 +119,17 @@ def validate_parent_department(
     return parent_department
 
 
+# ============ CREATE FUNCTIONS ============
+
 def create_department(
-    db,
+    db: Session,
     department_data,
-    current_user
+    current_user: dict
 ):
+    """
+    Create a new department
+    """
+    # Check if department already exists
     existing_department = (
         db.query(Department)
         .filter(
@@ -153,6 +168,7 @@ def create_department(
             current_user["client_id"]
         )
 
+    # Create department
     department = Department(
         id=str(uuid.uuid4()),
         client_id=current_user["client_id"],
@@ -172,10 +188,14 @@ def create_department(
 
 
 def create_department_for_client(
-    db,
+    db: Session,
     client_id: str,
     department_data
 ):
+    """
+    Create a department for a specific client (ADMIN only)
+    """
+    # Validate client exists
     client = (
         db.query(Client)
         .filter(
@@ -191,6 +211,7 @@ def create_department_for_client(
             detail="Client not found"
         )
 
+    # Check if department already exists
     existing_department = (
         db.query(Department)
         .filter(
@@ -229,6 +250,7 @@ def create_department_for_client(
             client_id
         )
 
+    # Create department
     department = Department(
         id=str(uuid.uuid4()),
         client_id=client_id,
@@ -247,10 +269,20 @@ def create_department_for_client(
     return department
 
 
+# ============ READ FUNCTIONS ============
+
 def get_departments(
-    db,
-    current_user
+    db: Session,
+    current_user: dict
 ):
+    """
+    Get departments based on user role
+    
+    ADMIN: Sees all departments across all clients
+    CLIENT_ADMIN: Sees all departments for their client
+    MANAGER: Sees only departments they manage
+    USER: Sees only their own department (if assigned)
+    """
     # Platform Admin sees all departments
     if current_user["role"] == "ADMIN":
         return (
@@ -259,21 +291,54 @@ def get_departments(
             .all()
         )
     
-    # Client Admin and Manager see only their client's departments
-    return (
-        db.query(Department)
-        .filter(
-            Department.client_id == current_user["client_id"],
-            Department.is_active == True
+    # Client Admin sees all departments for their client
+    if current_user["role"] == "CLIENT_ADMIN":
+        return (
+            db.query(Department)
+            .filter(
+                Department.client_id == current_user["client_id"],
+                Department.is_active == True
+            )
+            .all()
         )
-        .all()
-    )
+    
+    # Manager sees only departments they manage
+    if current_user["role"] == "MANAGER":
+        return (
+            db.query(Department)
+            .filter(
+                Department.manager_id == current_user["id"],
+                Department.is_active == True
+            )
+            .all()
+        )
+    
+    # USER sees only their department (if assigned)
+    if current_user["role"] == "USER":
+        user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not user or not user.department_id:
+            return []
+        
+        return (
+            db.query(Department)
+            .filter(
+                Department.id == user.department_id,
+                Department.is_active == True
+            )
+            .all()
+        )
+    
+    # Default: return empty list for unknown roles
+    return []
 
 
 def get_departments_by_client(
-    db,
+    db: Session,
     client_id: str
 ):
+    """
+    Get all departments for a specific client
+    """
     return (
         db.query(Department)
         .filter(
@@ -284,105 +349,14 @@ def get_departments_by_client(
     )
 
 
-def update_department(
-    db,
-    department_id: str,
-    department_data,
-    current_user
-):
-    department = (
-        db.query(Department)
-        .filter(
-            Department.id == department_id
-        )
-        .first()
-    )
-
-    if not department:
-        raise HTTPException(
-            status_code=404,
-            detail="Department not found"
-        )
-
-    if current_user["role"] != "ADMIN":
-        if department.client_id != current_user["client_id"]:
-            raise HTTPException(
-                status_code=403,
-                detail="You cannot update this department"
-            )
-
-    update_data = department_data.model_dump(
-        exclude_unset=True
-    )
-    
-    # Validate manager if being updated
-    if "manager_id" in update_data:
-        validate_manager(
-            db,
-            update_data["manager_id"],
-            department.client_id
-        )
-    
-    # Validate parent department if being updated
-    if "parent_department_id" in update_data:
-        if update_data["parent_department_id"]:
-            validate_parent_department(
-                db,
-                update_data["parent_department_id"],
-                department.client_id
-            )
-
-    for key, value in update_data.items():
-        setattr(
-            department,
-            key,
-            value
-        )
-
-    db.commit()
-    db.refresh(department)
-
-    return department
-
-
-def deactivate_department(
-    db,
-    department_id: str,
-    current_user
-):
-    department = (
-        db.query(Department)
-        .filter(
-            Department.id == department_id
-        )
-        .first()
-    )
-
-    if not department:
-        raise HTTPException(
-            status_code=404,
-            detail="Department not found"
-        )
-
-    if current_user["role"] != "ADMIN":
-        if department.client_id != current_user["client_id"]:
-            raise HTTPException(
-                status_code=403,
-                detail="You cannot deactivate this department"
-            )
-
-    department.is_active = False
-    db.commit()
-    db.refresh(department)
-
-    return department
-
-
 def get_department_by_id(
-    db,
+    db: Session,
     department_id: str,
-    current_user
+    current_user: dict
 ):
+    """
+    Get a department by ID with role-based access control
+    """
     department = (
         db.query(Department)
         .filter(
@@ -398,20 +372,51 @@ def get_department_by_id(
             detail="Department not found"
         )
 
-    if current_user["role"] != "ADMIN":
+    # ADMIN - can access any department
+    if current_user["role"] == "ADMIN":
+        return department
+    
+    # CLIENT_ADMIN - can access departments for their client
+    if current_user["role"] == "CLIENT_ADMIN":
         if department.client_id != current_user["client_id"]:
             raise HTTPException(
                 status_code=403,
                 detail="Access denied"
             )
-
-    return department
+        return department
+    
+    # MANAGER - can only access departments they manage
+    if current_user["role"] == "MANAGER":
+        if department.manager_id != current_user["id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied. You do not manage this department"
+            )
+        return department
+    
+    # USER - can only access their own department
+    if current_user["role"] == "USER":
+        user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not user or user.department_id != department.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+        return department
+    
+    raise HTTPException(
+        status_code=403,
+        detail="Access denied"
+    )
 
 
 def get_deactivated_departments_by_client(
-    db,
+    db: Session,
     client_id: str
 ):
+    """
+    Get all deactivated departments for a client
+    """
     return (
         db.query(Department)
         .filter(
@@ -422,49 +427,13 @@ def get_deactivated_departments_by_client(
     )
 
 
-def restore_department(
-    db,
-    department_id: str,
-    current_user
-):
-    department = (
-        db.query(Department)
-        .filter(
-            Department.id == department_id
-        )
-        .first()
-    )
-
-    if not department:
-        raise HTTPException(
-            status_code=404,
-            detail="Department not found"
-        )
-
-    if current_user["role"] != "ADMIN":
-        if department.client_id != current_user["client_id"]:
-            raise HTTPException(
-                status_code=403,
-                detail="You cannot restore this department"
-            )
-
-    # Validate department limit before restoring
-    validate_department_limit(
-        db,
-        department.client_id
-    )
-
-    department.is_active = True
-    db.commit()
-    db.refresh(department)
-
-    return department
-
-
 def get_department_manager(
-    db,
+    db: Session,
     department_id: str
 ):
+    """
+    Get the manager of a department
+    """
     department = (
         db.query(Department)
         .filter(
@@ -503,3 +472,189 @@ def get_department_manager(
         )
 
     return manager
+
+
+# ============ UPDATE FUNCTIONS ============
+
+def update_department(
+    db: Session,
+    department_id: str,
+    department_data,
+    current_user: dict
+):
+    """
+    Update a department with role-based access control
+    """
+    department = (
+        db.query(Department)
+        .filter(
+            Department.id == department_id
+        )
+        .first()
+    )
+
+    if not department:
+        raise HTTPException(
+            status_code=404,
+            detail="Department not found"
+        )
+
+    # ADMIN - can update any department
+    if current_user["role"] == "ADMIN":
+        pass  # Allow
+    
+    # CLIENT_ADMIN - can update departments for their client
+    elif current_user["role"] == "CLIENT_ADMIN":
+        if department.client_id != current_user["client_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+    
+    # MANAGER - can update only departments they manage
+    elif current_user["role"] == "MANAGER":
+        if department.manager_id != current_user["id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied. You do not manage this department"
+            )
+    
+    # USER - cannot update departments
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied"
+        )
+
+    update_data = department_data.model_dump(
+        exclude_unset=True
+    )
+    
+    # Validate manager if being updated
+    if "manager_id" in update_data:
+        # Only ADMIN and CLIENT_ADMIN can change manager
+        if current_user["role"] not in ["ADMIN", "CLIENT_ADMIN"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Only ADMIN or CLIENT_ADMIN can change department manager"
+            )
+        validate_manager(
+            db,
+            update_data["manager_id"],
+            department.client_id
+        )
+    
+    # Validate parent department if being updated
+    if "parent_department_id" in update_data:
+        if update_data["parent_department_id"]:
+            validate_parent_department(
+                db,
+                update_data["parent_department_id"],
+                department.client_id
+            )
+
+    for key, value in update_data.items():
+        setattr(
+            department,
+            key,
+            value
+        )
+
+    db.commit()
+    db.refresh(department)
+
+    return department
+
+
+# ============ DELETE/DEACTIVATE FUNCTIONS ============
+
+def deactivate_department(
+    db: Session,
+    department_id: str,
+    current_user: dict
+):
+    """
+    Deactivate a department (soft delete)
+    """
+    department = (
+        db.query(Department)
+        .filter(
+            Department.id == department_id
+        )
+        .first()
+    )
+
+    if not department:
+        raise HTTPException(
+            status_code=404,
+            detail="Department not found"
+        )
+
+    # Only ADMIN or CLIENT_ADMIN can deactivate departments
+    if current_user["role"] not in ["ADMIN", "CLIENT_ADMIN"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Only ADMIN or CLIENT_ADMIN can deactivate departments"
+        )
+
+    if current_user["role"] != "ADMIN":
+        if department.client_id != current_user["client_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+    department.is_active = False
+    db.commit()
+    db.refresh(department)
+
+    return department
+
+
+def restore_department(
+    db: Session,
+    department_id: str,
+    current_user: dict
+):
+    """
+    Restore a deactivated department
+    """
+    department = (
+        db.query(Department)
+        .filter(
+            Department.id == department_id
+        )
+        .first()
+    )
+
+    if not department:
+        raise HTTPException(
+            status_code=404,
+            detail="Department not found"
+        )
+
+    # Only ADMIN or CLIENT_ADMIN can restore departments
+    if current_user["role"] not in ["ADMIN", "CLIENT_ADMIN"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Only ADMIN or CLIENT_ADMIN can restore departments"
+        )
+
+    if current_user["role"] != "ADMIN":
+        if department.client_id != current_user["client_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+    # Validate department limit before restoring
+    validate_department_limit(
+        db,
+        department.client_id
+    )
+
+    department.is_active = True
+    db.commit()
+    db.refresh(department)
+
+    return department

@@ -27,11 +27,7 @@ class Asset(Base):
         nullable=False
     )
 
-    location_id = Column(
-        String(36),
-        ForeignKey("locations.id"),
-        nullable=True
-    )
+
 
     category_id = Column(
         String(36),
