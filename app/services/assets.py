@@ -327,3 +327,248 @@ def deactivate_asset(db, asset_id: str, current_user):
     db.refresh(asset)
 
     return asset
+
+
+def assign_asset(
+    db,
+    asset_id: str,
+    user_id: str,
+    current_user
+):
+
+    asset = get_asset_by_id(
+        db,
+        asset_id,
+        current_user
+    )
+
+    user = (
+        db.query(User)
+        .filter(
+            User.id == user_id,
+            User.is_active == True
+        )
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    if current_user["role"] != "ADMIN":
+
+        if (
+            user.client_id
+            !=
+            current_user["client_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+    asset.assigned_to_user_id = user.id
+    asset.status = "ASSIGNED"
+
+    db.commit()
+    db.refresh(asset)
+
+    return asset
+
+
+
+def unassign_asset(
+    db,
+    asset_id: str,
+    current_user
+):
+
+    asset = get_asset_by_id(
+        db,
+        asset_id,
+        current_user
+    )
+
+    asset.assigned_to_user_id = None
+    asset.status = "AVAILABLE"
+
+    db.commit()
+    db.refresh(asset)
+
+    return asset
+
+
+
+
+from app.models.users import User
+from app.models.departments import Department
+from fastapi import HTTPException
+
+def assign_asset(
+    db,
+    asset_id: str,
+    user_id: str,
+    current_user
+):
+    asset = get_asset_by_id(
+        db,
+        asset_id,
+        current_user
+    )
+
+    user = (
+        db.query(User)
+        .filter(
+            User.id == user_id,
+            User.is_active == True
+        )
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    # Client isolation
+    if current_user["role"] != "ADMIN":
+
+        if (
+            user.client_id
+            !=
+            current_user["client_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+    # Manager restrictions
+    if current_user["role"] == "MANAGER":
+
+        department = (
+            db.query(Department)
+            .filter(
+                Department.manager_id
+                ==
+                current_user["id"],
+                Department.is_active == True
+            )
+            .first()
+        )
+
+        if not department:
+            raise HTTPException(
+                status_code=403,
+                detail="No department assigned"
+            )
+
+        if (
+            asset.department_id
+            !=
+            department.id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Asset does not belong "
+                    "to your department"
+                )
+            )
+
+        if (
+            user.department_id
+            !=
+            department.id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "User does not belong "
+                    "to your department"
+                )
+            )
+
+    # Optional safety
+    if (
+        asset.department_id
+        !=
+        user.department_id
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Asset and user belong "
+                "to different departments"
+            )
+        )
+
+    asset.assigned_to_user_id = user.id
+    asset.status = "ASSIGNED"
+
+    db.commit()
+    db.refresh(asset)
+
+    return asset
+
+
+def unassign_asset(
+    db,
+    asset_id: str,
+    current_user
+):
+    asset = get_asset_by_id(
+        db,
+        asset_id,
+        current_user
+    )
+
+    # Manager restrictions
+    if current_user["role"] == "MANAGER":
+
+        department = (
+            db.query(Department)
+            .filter(
+                Department.manager_id
+                ==
+                current_user["id"],
+                Department.is_active == True
+            )
+            .first()
+        )
+
+        if not department:
+            raise HTTPException(
+                status_code=403,
+                detail="No department assigned"
+            )
+
+        if (
+            asset.department_id
+            !=
+            department.id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Asset does not belong "
+                    "to your department"
+                )
+            )
+
+    if not asset.assigned_to_user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Asset is already unassigned"
+        )
+
+    asset.assigned_to_user_id = None
+    asset.status = "AVAILABLE"
+
+    db.commit()
+    db.refresh(asset)
+
+    return asset

@@ -24,12 +24,13 @@ app.include_router(department_router)
 app.include_router(subscription_router)
 app.include_router(users_router)
 app.include_router(services_router)
-from app.routers import asset, asset_categories, asset_type
+from app.routers import asset, asset_categories, asset_type, dashboard
 
 app.include_router(
     asset_categories.router
 )
 app.include_router(asset_type.router)
+app.include_router(dashboard.router)
 
 
 
@@ -37,11 +38,6 @@ from app.routers import asset
 
 app.include_router(
     asset.router
-)
-from app.routers import dashboards
-
-app.include_router(
-    dashboards.router
 )
 
 from app.routers import manager

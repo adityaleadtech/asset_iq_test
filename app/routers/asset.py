@@ -8,11 +8,19 @@ from app.schemas.assets import (
     AssetResponse,
     AssetUpdate
 )
+
+from app.schemas.assets import (
+    AssetAssignRequest
+)
+
+
 from app.services.assets import (
+    assign_asset,
     create_asset,
     deactivate_asset,
     get_asset_by_id,
     get_assets,
+    unassign_asset,
     update_asset
 )
 
@@ -177,3 +185,162 @@ def delete_asset(
 ):
     deactivate_asset(db, asset_id, current_user)
     return {"message": "Asset deactivated successfully"}
+
+
+
+
+@router.post(
+    "/{asset_id}/assign",
+    response_model=AssetResponse,
+    summary="Assign Asset"
+)
+def assign_existing_asset(
+    asset_id: str,
+    request: AssetAssignRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        service_permission_required(
+            "ASSET_MANAGEMENT",
+            "update"
+        )
+    )
+):
+    return assign_asset(
+        db,
+        asset_id,
+        request.user_id,
+        current_user
+    )
+
+
+@router.post(
+    "/{asset_id}/unassign",
+    response_model=AssetResponse,
+    summary="Unassign Asset",
+    description="""
+    Remove the current user assignment from an asset.
+
+    Access:
+    - ADMIN
+    - CLIENT_ADMIN
+    - MANAGER (if they have ASSET_MANAGEMENT.update permission)
+
+    Behaviour:
+    - Removes assigned user
+    - Changes asset status to AVAILABLE
+    - Asset remains in its department
+    - Asset becomes available for reassignment
+
+    Required Permission:
+    - ASSET_MANAGEMENT.update
+    """
+)
+def unassign_existing_asset(
+    asset_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        service_permission_required(
+            "ASSET_MANAGEMENT",
+            "update"
+        )
+    )
+):
+    return unassign_asset(
+        db,
+        asset_id,
+        current_user
+    )
+
+
+
+
+from app.schemas.assets import (
+    AssetAssignRequest
+)
+
+from app.services.assets import (
+    assign_asset
+)
+
+@router.post(
+    "/{asset_id}/assign",
+    response_model=AssetResponse,
+    summary="Assign Asset",
+    description="""
+    Assign an asset to a user.
+
+    Access:
+    - ADMIN
+    - CLIENT_ADMIN
+    - MANAGER
+
+    Validation:
+    - Asset must exist
+    - User must exist
+    - User must belong to same client
+    - Managers can only assign assets
+      within their department
+    """
+)
+def assign_existing_asset(
+    asset_id: str,
+    request: AssetAssignRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        service_permission_required(
+            "ASSET_MANAGEMENT",
+            "update"
+        )
+    )
+):
+    return assign_asset(
+        db,
+        asset_id,
+        request.user_id,
+        current_user
+    )
+
+
+from app.services.assets import (
+    assign_asset,
+    unassign_asset
+)
+
+@router.post(
+    "/{asset_id}/unassign",
+    response_model=AssetResponse,
+    summary="Unassign Asset",
+    description="""
+    Remove the current user assignment from an asset.
+
+    Access:
+    - ADMIN
+    - CLIENT_ADMIN
+    - MANAGER
+
+    Validation:
+    - Asset must exist
+    - Asset must be assigned
+    - Managers can only unassign assets
+      from departments they manage
+
+    Behaviour:
+    - assigned_to_user_id = null
+    - status = AVAILABLE
+    """
+)
+def unassign_existing_asset(
+    asset_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        service_permission_required(
+            "ASSET_MANAGEMENT",
+            "update"
+        )
+    )
+):
+    return unassign_asset(
+        db,
+        asset_id,
+        current_user
+    )

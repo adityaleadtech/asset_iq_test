@@ -97,3 +97,13 @@ class AssetResponse(
     class Config:
 
         from_attributes = True
+
+
+
+from pydantic import BaseModel
+
+
+class AssetAssignRequest(BaseModel):
+    user_id: str
+
+    

@@ -128,6 +128,12 @@ def create_department(
 ):
     """
     Create a new department
+    
+    Access:
+    - ADMIN: Can create for any client
+    - CLIENT_ADMIN: Can create for their client
+    - MANAGER: Cannot create departments
+    - USER: Cannot create departments
     """
     # Check if department already exists
     existing_department = (
@@ -281,7 +287,7 @@ def get_departments(
     ADMIN: Sees all departments across all clients
     CLIENT_ADMIN: Sees all departments for their client
     MANAGER: Sees only departments they manage
-    USER: Sees only their own department (if assigned)
+    USER: No access to departments (returns empty list)
     """
     # Platform Admin sees all departments
     if current_user["role"] == "ADMIN":
@@ -313,22 +319,8 @@ def get_departments(
             .all()
         )
     
-    # USER sees only their department (if assigned)
-    if current_user["role"] == "USER":
-        user = db.query(User).filter(User.id == current_user["id"]).first()
-        if not user or not user.department_id:
-            return []
-        
-        return (
-            db.query(Department)
-            .filter(
-                Department.id == user.department_id,
-                Department.is_active == True
-            )
-            .all()
-        )
-    
-    # Default: return empty list for unknown roles
+    # USER - no access to departments
+    # Return empty list instead of exposing department data
     return []
 
 
@@ -337,7 +329,7 @@ def get_departments_by_client(
     client_id: str
 ):
     """
-    Get all departments for a specific client
+    Get all departments for a specific client (ADMIN only)
     """
     return (
         db.query(Department)
@@ -356,6 +348,11 @@ def get_department_by_id(
 ):
     """
     Get a department by ID with role-based access control
+    
+    ADMIN: Can access any department
+    CLIENT_ADMIN: Can access departments for their client
+    MANAGER: Can only access departments they manage
+    USER: No access (403 Forbidden)
     """
     department = (
         db.query(Department)
@@ -394,19 +391,10 @@ def get_department_by_id(
             )
         return department
     
-    # USER - can only access their own department
-    if current_user["role"] == "USER":
-        user = db.query(User).filter(User.id == current_user["id"]).first()
-        if not user or user.department_id != department.id:
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied"
-            )
-        return department
-    
+    # USER - no access to departments
     raise HTTPException(
         status_code=403,
-        detail="Access denied"
+        detail="Access denied. Users cannot view department details"
     )
 
 
@@ -415,7 +403,7 @@ def get_deactivated_departments_by_client(
     client_id: str
 ):
     """
-    Get all deactivated departments for a client
+    Get all deactivated departments for a client (ADMIN only)
     """
     return (
         db.query(Department)
@@ -429,30 +417,29 @@ def get_deactivated_departments_by_client(
 
 def get_department_manager(
     db: Session,
-    department_id: str
+    department_id: str,
+    current_user: dict
 ):
     """
-    Get the manager of a department
+    Get the manager of a department with RBAC
+    
+    ADMIN: Can access any department manager
+    CLIENT_ADMIN: Can access managers for their client
+    MANAGER: Can only access managers of departments they manage
+    USER: No access (403 Forbidden)
     """
-    department = (
-        db.query(Department)
-        .filter(
-            Department.id == department_id,
-            Department.is_active == True
-        )
-        .first()
+    # First, validate access to the department
+    department = get_department_by_id(
+        db,
+        department_id,
+        current_user
     )
-
-    if not department:
-        raise HTTPException(
-            status_code=404,
-            detail="Department not found"
-        )
-
+    
+    # If we got here, access is granted
     if not department.manager_id:
         raise HTTPException(
             status_code=404,
-            detail="No manager assigned"
+            detail="No manager assigned to this department"
         )
 
     manager = (
@@ -484,6 +471,11 @@ def update_department(
 ):
     """
     Update a department with role-based access control
+    
+    ADMIN: Can update any department
+    CLIENT_ADMIN: Can update departments for their client
+    MANAGER: CANNOT update departments (403 Forbidden)
+    USER: CANNOT update departments (403 Forbidden)
     """
     department = (
         db.query(Department)
@@ -499,11 +491,10 @@ def update_department(
             detail="Department not found"
         )
 
-    # ADMIN - can update any department
+    # Only ADMIN and CLIENT_ADMIN can update departments
     if current_user["role"] == "ADMIN":
         pass  # Allow
     
-    # CLIENT_ADMIN - can update departments for their client
     elif current_user["role"] == "CLIENT_ADMIN":
         if department.client_id != current_user["client_id"]:
             raise HTTPException(
@@ -511,16 +502,14 @@ def update_department(
                 detail="Access denied"
             )
     
-    # MANAGER - can update only departments they manage
     elif current_user["role"] == "MANAGER":
-        if department.manager_id != current_user["id"]:
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied. You do not manage this department"
-            )
+        # Managers CANNOT update departments
+        raise HTTPException(
+            status_code=403,
+            detail="Managers cannot update departments. Only ADMIN or CLIENT_ADMIN can modify department structure."
+        )
     
-    # USER - cannot update departments
-    else:
+    else:  # USER or unknown role
         raise HTTPException(
             status_code=403,
             detail="Access denied"
@@ -575,6 +564,9 @@ def deactivate_department(
 ):
     """
     Deactivate a department (soft delete)
+    
+    Only ADMIN and CLIENT_ADMIN can deactivate departments
+    MANAGER and USER cannot deactivate departments
     """
     department = (
         db.query(Department)
@@ -618,6 +610,9 @@ def restore_department(
 ):
     """
     Restore a deactivated department
+    
+    Only ADMIN and CLIENT_ADMIN can restore departments
+    MANAGER and USER cannot restore departments
     """
     department = (
         db.query(Department)
