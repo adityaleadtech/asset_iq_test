@@ -10,9 +10,18 @@ from app.routers.services import router as services_router
 from app.routers.subscription import router as subscription_router
 
 from app.routers.users import router as users_router
+from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # testing ke liye
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(platform_admin_router)
 app.include_router(clients_router)
