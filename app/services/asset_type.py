@@ -1,150 +1,180 @@
 import uuid
+from typing import List, Optional
 
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.models.asset_type import AssetType
 from app.models.asset_categories import AssetCategory
+from app.models.asset import Asset  # ✅ Fixed import
+from app.schemas.asset_type import AssetTypeCreate, AssetTypeUpdate
 
 
 def create_asset_type(
-    db,
-    type_data,
-    current_user
-):
+    db: Session,
+    type_data: AssetTypeCreate,
+    current_user: dict
+) -> AssetType:
+    """
+    Create a new asset type.
+    - ADMIN: Global types (client_id = None)
+    - CLIENT_ADMIN: Client-specific types
+    """
+    # Determine client_id
+    client_id = None if current_user["role"] == "ADMIN" else current_user["client_id"]
 
+    # Validate category exists and belongs to same client/global
     category = (
         db.query(AssetCategory)
         .filter(
-            AssetCategory.id
-            ==
-            type_data.category_id,
-
-            AssetCategory.client_id
-            ==
-            current_user["client_id"],
-
-            AssetCategory.is_active
-            ==
-            True
+            AssetCategory.id == type_data.category_id,
+            AssetCategory.is_active == True
         )
         .first()
     )
 
     if not category:
-
         raise HTTPException(
             status_code=404,
-            detail="Category not found"
+            detail="Asset category not found"
         )
 
-    existing_type = (
+    # Check if category belongs to the same client scope
+    if current_user["role"] != "ADMIN":
+        if category.client_id is not None and category.client_id != current_user["client_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Category does not belong to your client"
+            )
+
+    # Check duplicate name (case-insensitive)
+    existing = (
         db.query(AssetType)
         .filter(
-            AssetType.client_id
-            ==
-            current_user["client_id"],
-
-            AssetType.category_id
-            ==
-            type_data.category_id,
-
-            AssetType.name
-            ==
-            type_data.name,
-
-            AssetType.is_active
-            ==
-            True
+            AssetType.name.ilike(type_data.name),  # ✅ Case-insensitive
+            AssetType.client_id == client_id,
+            AssetType.is_active == True
         )
         .first()
     )
 
-    if existing_type:
-
+    if existing:
         raise HTTPException(
             status_code=400,
-            detail="Type already exists"
+            detail="Asset type with this name already exists"
         )
 
     asset_type = AssetType(
-
         id=str(uuid.uuid4()),
-
-        client_id=current_user["client_id"],
-
+        client_id=client_id,
         category_id=type_data.category_id,
-
         name=type_data.name,
-
         description=type_data.description,
-
         created_by=current_user["id"],
-
         is_active=True
     )
 
-    db.add(asset_type)
+    try:
+        db.add(asset_type)
+        db.commit()
+        db.refresh(asset_type)
+        return asset_type
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create asset type: {str(e)}"
+        )
 
-    db.commit()
 
-    db.refresh(asset_type)
-
-    return asset_type
+from fastapi import HTTPException
 
 
-
-def get_asset_types(
-    db,
-    current_user
+def get_asset_types_by_category(
+    db: Session,
+    category_id: str,
+    current_user: dict
 ):
+    category = (
+        db.query(AssetCategory)
+        .filter(
+            AssetCategory.id == category_id,
+            AssetCategory.is_active == True
+        )
+        .first()
+    )
 
-    return (
+    if not category:
+        raise HTTPException(
+            status_code=404,
+            detail="Asset category not found"
+        )
+
+    query = (
         db.query(AssetType)
         .filter(
-            AssetType.client_id
-            ==
-            current_user["client_id"],
+            AssetType.category_id == category_id,
+            AssetType.is_active == True
+        )
+    )
 
-            AssetType.is_active
-            ==
-            True
+    # Platform Admin
+    if current_user["role"] == "ADMIN":
+        return query.all()
+
+    # Client Admin / Manager
+    return (
+        query.filter(
+            or_(
+                AssetType.client_id == current_user["client_id"],
+                AssetType.client_id.is_(None)
+            )
         )
         .all()
     )
 
+def get_asset_types(
+    db: Session,
+    current_user: dict
+) -> List[AssetType]:
+    """
+    Get all active asset types with proper scope.
+    - ADMIN: Sees ALL types (global + all clients)
+    - CLIENT_ADMIN: Sees their types + global types
+    """
+    if current_user["role"] == "ADMIN":
+        # ✅ ADMIN sees ALL types
+        return (
+            db.query(AssetType)
+            .filter(
+                AssetType.is_active == True
+            )
+            .all()
+        )
 
-
-def get_asset_types_by_category(
-    db,
-    category_id: str,
-    current_user
-):
-
+    # ✅ CLIENT_ADMIN sees their types + global types
     return (
         db.query(AssetType)
         .filter(
-            AssetType.client_id
-            ==
-            current_user["client_id"],
-
-            AssetType.category_id
-            ==
-            category_id,
-
-            AssetType.is_active
-            ==
-            True
+            AssetType.is_active == True,
+            or_(  # ✅ Fixed OR condition
+                AssetType.client_id == current_user["client_id"],
+                AssetType.client_id.is_(None)
+            )
         )
         .all()
     )
 
 
 def get_asset_type_by_id(
-    db,
+    db: Session,
     type_id: str,
-    current_user
-):
-
+    current_user: dict
+) -> AssetType:
+    """
+    Get a single asset type by ID with access control.
+    """
     asset_type = (
         db.query(AssetType)
         .filter(
@@ -160,10 +190,12 @@ def get_asset_type_by_id(
             detail="Asset type not found"
         )
 
+    if current_user["role"] == "ADMIN":
+        return asset_type
+
     if (
-        asset_type.client_id
-        !=
-        current_user["client_id"]
+        asset_type.client_id is not None
+        and asset_type.client_id != current_user["client_id"]
     ):
         raise HTTPException(
             status_code=403,
@@ -173,145 +205,131 @@ def get_asset_type_by_id(
     return asset_type
 
 
-
-from fastapi import HTTPException
-
-from app.models.asset_type import AssetType
-
-
 def update_asset_type(
-    db,
+    db: Session,
     type_id: str,
-    type_data,
-    current_user
-):
+    type_data: AssetTypeUpdate,
+    current_user: dict
+) -> AssetType:
+    """
+    Update an existing asset type.
+    """
+    asset_type = get_asset_type_by_id(db, type_id, current_user)
 
-    asset_type = (
-        db.query(AssetType)
-        .filter(
-            AssetType.id == type_id,
-            AssetType.is_active == True
-        )
-        .first()
-    )
-
-    if not asset_type:
-
-        raise HTTPException(
-            status_code=404,
-            detail="Asset type not found"
-        )
-
+    # ✅ Prevent CLIENT_ADMIN from updating global types
     if (
-        asset_type.client_id
-        !=
-        current_user["client_id"]
+        asset_type.client_id is None
+        and current_user["role"] != "ADMIN"
     ):
-
         raise HTTPException(
             status_code=403,
-            detail="Access denied"
+            detail="Only platform admin can update global asset types"
         )
 
-    update_data = (
-        type_data.model_dump(
-            exclude_unset=True
-        )
-    )
+    update_data = type_data.model_dump(exclude_unset=True)
 
-    if "name" in update_data:
-
-        existing_type = (
-            db.query(AssetType)
+    # Validate category if being updated
+    if "category_id" in update_data:
+        category = (
+            db.query(AssetCategory)
             .filter(
-                AssetType.client_id
-                ==
-                current_user["client_id"],
-
-                AssetType.category_id
-                ==
-                asset_type.category_id,
-
-                AssetType.name
-                ==
-                update_data["name"],
-
-                AssetType.id
-                !=
-                type_id,
-
-                AssetType.is_active
-                ==
-                True
+                AssetCategory.id == update_data["category_id"],
+                AssetCategory.is_active == True
             )
             .first()
         )
 
-        if existing_type:
-
+        if not category:
             raise HTTPException(
-                status_code=400,
-                detail="Asset type already exists"
+                status_code=404,
+                detail="Asset category not found"
             )
 
-    for key, value in update_data.items():
+        if current_user["role"] != "ADMIN":
+            if category.client_id is not None and category.client_id != current_user["client_id"]:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Category does not belong to your client"
+                )
 
-        setattr(
-            asset_type,
-            key,
-            value
+    # Check duplicate name (case-insensitive)
+    if "name" in update_data:
+        existing = (
+            db.query(AssetType)
+            .filter(
+                AssetType.name.ilike(update_data["name"]),  # ✅ Case-insensitive
+                AssetType.client_id == asset_type.client_id,
+                AssetType.id != type_id,
+                AssetType.is_active == True
+            )
+            .first()
         )
 
-    db.commit()
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail="Asset type with this name already exists"
+            )
 
-    db.refresh(asset_type)
+    try:
+        for key, value in update_data.items():
+            setattr(asset_type, key, value)
 
-    return asset_type
-
-
-
-from fastapi import HTTPException
-
-from app.models.asset_type import AssetType
+        db.commit()
+        db.refresh(asset_type)
+        return asset_type
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update asset type: {str(e)}"
+        )
 
 
 def deactivate_asset_type(
-    db,
+    db: Session,
     type_id: str,
-    current_user
-):
+    current_user: dict
+) -> AssetType:
+    """
+    Soft delete an asset type.
+    """
+    asset_type = get_asset_type_by_id(db, type_id, current_user)
 
-    asset_type = (
-        db.query(AssetType)
-        .filter(
-            AssetType.id == type_id,
-            AssetType.is_active == True
-        )
-        .first()
-    )
-
-    if not asset_type:
-
-        raise HTTPException(
-            status_code=404,
-            detail="Asset type not found"
-        )
-
+    # ✅ Prevent CLIENT_ADMIN from deleting global types
     if (
-        asset_type.client_id
-        !=
-        current_user["client_id"]
+        asset_type.client_id is None
+        and current_user["role"] != "ADMIN"
     ):
-
         raise HTTPException(
             status_code=403,
-            detail="Access denied"
+            detail="Only platform admin can deactivate global asset types"
         )
 
-    asset_type.is_active = False
+    # Check if type is being used by any assets
+    asset_count = (
+        db.query(Asset)
+        .filter(
+            Asset.type_id == type_id,
+            Asset.is_active == True
+        )
+        .count()
+    )
 
-    db.commit()
+    if asset_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot deactivate type. It is used by {asset_count} asset(s)"
+        )
 
-    db.refresh(asset_type)
-
-    return asset_type
+    try:
+        asset_type.is_active = False
+        db.commit()
+        db.refresh(asset_type)
+        return asset_type
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to deactivate asset type: {str(e)}"
+        )

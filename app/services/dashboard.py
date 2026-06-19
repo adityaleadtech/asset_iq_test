@@ -288,3 +288,92 @@ def get_platform_dashboard(
         "assigned_assets": assigned_assets,
         "available_assets": available_assets
     }
+
+
+
+from fastapi import HTTPException
+
+from app.models.departments import Department
+from app.models.users import User
+from app.models.asset import Asset
+
+
+def get_manager_dashboard(
+    db,
+    current_user
+):
+    if current_user["role"] != "MANAGER":
+        raise HTTPException(
+            status_code=403,
+            detail="Manager access required"
+        )
+
+    department = (
+        db.query(Department)
+        .filter(
+            Department.manager_id == current_user["id"],
+            Department.is_active == True
+        )
+        .first()
+    )
+
+    if not department:
+        raise HTTPException(
+            status_code=404,
+            detail="No department assigned"
+        )
+
+    total_team_members = (
+        db.query(User)
+        .filter(
+            User.department_id == department.id,
+            User.is_active == True
+        )
+        .count()
+    )
+
+    total_assets = (
+        db.query(Asset)
+        .filter(
+            Asset.department_id == department.id,
+            Asset.is_active == True
+        )
+        .count()
+    )
+
+    assigned_assets = (
+        db.query(Asset)
+        .filter(
+            Asset.department_id == department.id,
+            Asset.status == "ASSIGNED",
+            Asset.is_active == True
+        )
+        .count()
+    )
+
+    available_assets = (
+        db.query(Asset)
+        .filter(
+            Asset.department_id == department.id,
+            Asset.status == "AVAILABLE",
+            Asset.is_active == True
+        )
+        .count()
+    )
+
+    # To be implemented later
+    maintenance_pending = 0
+    geofence_alerts = 0
+
+    return {
+        "department": {
+            "id": department.id,
+            "name": department.name
+        },
+        "total_team_members": total_team_members,
+        "total_assets": total_assets,
+        "assigned_assets": assigned_assets,
+        "available_assets": available_assets,
+        "maintenance_pending": maintenance_pending,
+        "geofence_alerts": geofence_alerts
+    }

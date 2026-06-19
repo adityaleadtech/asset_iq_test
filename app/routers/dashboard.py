@@ -3,10 +3,11 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.config.dependencies import get_db  # ✅ Correct path
-from app.schemas.dashboard import ClientDashboardResponse, PlatformDashboardResponse
+from app.schemas.dashboard import ClientDashboardResponse, ManagerDashboardResponse, PlatformDashboardResponse
 from app.services.dashboard import (  # ✅ Singular
     get_client_dashboard,
     get_admin_dashboard,
+    get_manager_dashboard,
     get_platform_dashboard
 )
 from app.utils.auth import admin_required, get_current_user
@@ -59,3 +60,19 @@ def get_admin_dashboard_endpoint(
     Get platform-wide admin dashboard (ADMIN only).
     """
     return get_admin_dashboard(db, current_user)
+
+
+
+@router.get(
+    "/manager",
+    response_model=ManagerDashboardResponse,
+    summary="Manager Dashboard"
+)
+def fetch_manager_dashboard(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    return get_manager_dashboard(
+        db,
+        current_user
+    )

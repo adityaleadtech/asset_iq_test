@@ -57,3 +57,23 @@ class PlatformDashboardResponse(BaseModel):
     total_assets: int
     assigned_assets: int
     available_assets: int
+
+
+
+
+from pydantic import BaseModel
+
+
+class ManagerDepartmentSummary(BaseModel):
+    id: str
+    name: str
+
+
+class ManagerDashboardResponse(BaseModel):
+    department: ManagerDepartmentSummary
+    total_team_members: int
+    total_assets: int
+    assigned_assets: int
+    available_assets: int
+    maintenance_pending: int
+    geofence_alerts: int
