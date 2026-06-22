@@ -6,19 +6,30 @@ from app.utils.auth import get_current_user
 from app.config.permission import has_permission
 from app.schemas.assets import (
     AssetCreate,
+    AssetDashboardResponse,
     AssetLocationResponse,
     AssetUpdate,
     AssetResponse,
     AssetAssignRequest,
     AssetVerificationFormResponse,
     AssetVerificationRequest,
+    AssetAuditResponse,
+    AssetQrResponse,
 )
 from app.services import assets as asset_service
+from app.services.assets import (
+    get_asset_audits,
+    get_asset_dashboard,
+    get_asset_location,
+    get_asset_verification_data,
+    get_asset_qr,
+    regenerate_asset_qr,
+)
 
 router = APIRouter(prefix="/assets", tags=["Assets"])
 
 
-# Create a wrapper function that includes db
+# ==================== HELPER DEPENDENCY ====================
 def check_permission(service_code: str, action: str):
     def dependency(
         db: Session = Depends(get_db),
@@ -34,6 +45,42 @@ def check_permission(service_code: str, action: str):
     return dependency
 
 
+# ==================== DASHBOARD & ANALYTICS ====================
+@router.get(
+    "/dashboard",
+    response_model=AssetDashboardResponse,
+    summary="Asset Dashboard",
+    description="""
+    Get asset dashboard analytics and statistics.
+    
+    **Access:**
+    - **ADMIN** → All clients
+    - **CLIENT_ADMIN** → Their client
+    - **MANAGER** → Managed departments
+    - **CUSTOM ROLE** → Requires ASSET_MANAGEMENT.read permission
+    
+    **Filter:**
+    - Optional client_id filter for ADMIN users
+    """
+)
+def fetch_asset_dashboard(
+    client_id: str | None = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        check_permission(
+            "ASSET_MANAGEMENT",
+            "read"
+        )
+    )
+):
+    return get_asset_dashboard(
+        db,
+        current_user,
+        client_id
+    )
+
+
+# ==================== ASSET MANAGEMENT (CRUD) ====================
 @router.get(
     "",
     response_model=list[AssetResponse],
@@ -54,6 +101,29 @@ def fetch_assets(
     current_user=Depends(check_permission("ASSET_MANAGEMENT", "read"))
 ):
     return asset_service.get_assets(db, current_user)
+
+
+@router.get(
+    "/{asset_id}",
+    response_model=AssetResponse,
+    summary="Fetch asset by ID",
+    description="""
+    Fetch a specific asset by its ID.
+    
+    **Access:**
+    - **ADMIN** → Can view any asset
+    - **CLIENT_ADMIN** → Can view any asset in their client
+    - **MANAGER** → Can view assets in managed departments only
+    - **CUSTOM ROLE** → Can view any asset in their client (requires ASSET_MANAGEMENT.read permission)
+    - **USER** → Can view only assets assigned to them
+    """
+)
+def fetch_asset(
+    asset_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(check_permission("ASSET_MANAGEMENT", "read"))
+):
+    return asset_service.get_asset_by_id(db, asset_id, current_user)
 
 
 @router.post(
@@ -90,29 +160,6 @@ def create_new_asset(
     current_user=Depends(check_permission("ASSET_MANAGEMENT", "create"))
 ):
     return asset_service.create_asset(db, asset_data, current_user)
-
-
-@router.get(
-    "/{asset_id}",
-    response_model=AssetResponse,
-    summary="Fetch asset by ID",
-    description="""
-    Fetch a specific asset by its ID.
-    
-    **Access:**
-    - **ADMIN** → Can view any asset
-    - **CLIENT_ADMIN** → Can view any asset in their client
-    - **MANAGER** → Can view assets in managed departments only
-    - **CUSTOM ROLE** → Can view any asset in their client (requires ASSET_MANAGEMENT.read permission)
-    - **USER** → Can view only assets assigned to them
-    """
-)
-def fetch_asset(
-    asset_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(check_permission("ASSET_MANAGEMENT", "read"))
-):
-    return asset_service.get_asset_by_id(db, asset_id, current_user)
 
 
 @router.patch(
@@ -173,6 +220,7 @@ def delete_existing_asset(
     return asset_service.deactivate_asset(db, asset_id, current_user)
 
 
+# ==================== ASSET ASSIGNMENT ====================
 @router.post(
     "/{asset_id}/assign",
     response_model=AssetResponse,
@@ -237,165 +285,22 @@ def unassign_existing_asset(
     return asset_service.unassign_asset(db, asset_id, current_user)
 
 
-
-@router.post(
-    "/{asset_id}/verify",
-    response_model=AssetResponse,
-    summary="Verify Asset"
-)
-def verify_existing_asset(
-    asset_id: str,
-    verification_data: AssetVerificationRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    return asset_service.verify_asset(
-        db,
-        asset_id,
-        verification_data,
-        current_user
-    )
-
-
-from app.schemas.assets import AssetAuditResponse
-from app.services.assets import get_asset_audits, get_asset_location, get_asset_verification_data
-from app.config.dependencies import get_db, get_current_user
-from sqlalchemy.orm import Session
-from fastapi import Depends
-
-
-@router.get(
-    "/{asset_id}/audits",
-    response_model=list[AssetAuditResponse],
-    summary="Fetch Asset Audit History",
-    description="""
-    Fetch complete verification and scan history of an asset.
-
-    Access:
-    - ADMIN → Any asset
-    - CLIENT_ADMIN → Assets of their client
-    - MANAGER → Assets in departments they manage
-    - USER with ASSET_MANAGEMENT.read → All client assets
-    - Normal USER → Only assets assigned to them
-
-    Returns:
-    - Scan location
-    - Scan images
-    - Asset condition at time of scan
-    - Remarks
-    - Scanner details
-    - Scan timestamp
-    """
-)
-def fetch_asset_audits(
-    asset_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    return get_asset_audits(
-        db,
-        asset_id,
-        current_user
-    )
-
-
-@router.get(
-    "/verify/{asset_id}",
-    response_model=AssetVerificationFormResponse,
-    summary="Fetch Verification Form Data to be used with flutter when the scans the QR after the response this should be called"
-)
-def fetch_verification_data(
-    asset_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    return asset_service.get_asset_verification_data(
-        db,
-        asset_id,
-        current_user
-    )
-
-
-@router.get(
-    "/verify/{asset_id}",
-    response_model=AssetVerificationFormResponse,
-    summary="Fetch Verification Form Data",
-    description="""
-    Returns prefilled asset information after QR scan.
-
-    Access:
-    - ADMIN
-    - CLIENT_ADMIN
-    - MANAGER
-    - USER with ASSET_MANAGEMENT.read
-    - Normal USER for assigned assets
-
-    Used by Flutter after QR scanning.
-    """
-)
-def fetch_verification_data(
-    asset_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    return get_asset_verification_data(
-        db,
-        asset_id,
-        current_user
-        
-    )
-
-
-
-@router.get(
-    "/{asset_id}/location",
-    response_model=AssetLocationResponse,
-    summary="Fetch Asset Location",
-    description="""
-    Fetch latest asset location.
-
-    Access:
-    - ADMIN
-    - CLIENT_ADMIN
-    - MANAGER
-    - USER with ASSET_MANAGEMENT.read
-    - Normal USER for assigned assets only
-
-    Used by Flutter to display asset on map.
-    """
-)
-def fetch_asset_location(
-    asset_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    return get_asset_location(
-        db,
-        asset_id,
-        current_user
-    )
-
-
-
-from app.schemas.assets import AssetQrResponse
-from app.services.assets import get_asset_qr
-
-
+# ==================== QR CODE OPERATIONS ====================
 @router.get(
     "/{asset_id}/qr",
     response_model=AssetQrResponse,
-    summary="Fetch Asset QR",
+    summary="Fetch Asset QR Code",
     description="""
     Fetch QR code of an asset.
 
-    Access:
-    - ADMIN
-    - CLIENT_ADMIN
-    - MANAGER
-    - USER with ASSET_MANAGEMENT.read
-    - Normal USER for assigned assets only
+    **Access:**
+    - **ADMIN**
+    - **CLIENT_ADMIN**
+    - **MANAGER**
+    - **USER** with ASSET_MANAGEMENT.read
+    - **USER** for assigned assets only
 
-    Used for:
+    **Usage:**
     - View QR
     - Download QR
     - Print QR sticker
@@ -419,25 +324,20 @@ def fetch_asset_qr(
     )
 
 
-
-from app.services.assets import (
-    regenerate_asset_qr
-)
-
 @router.post(
     "/{asset_id}/regenerate-qr",
     response_model=AssetQrResponse,
-    summary="Regenerate Asset QR",
+    summary="Regenerate Asset QR Code",
     description="""
     Generate a fresh QR code for an asset.
 
-    Access:
-    - ADMIN
-    - CLIENT_ADMIN
-    - MANAGER
-    - USER with ASSET_MANAGEMENT.update permission
+    **Access:**
+    - **ADMIN**
+    - **CLIENT_ADMIN**
+    - **MANAGER**
+    - **USER** with ASSET_MANAGEMENT.update permission
 
-    Used for:
+    **Usage:**
     - Damaged QR stickers
     - Lost QR images
     - Reprinting labels
@@ -455,6 +355,139 @@ def regenerate_qr(
     )
 ):
     return regenerate_asset_qr(
+        db,
+        asset_id,
+        current_user
+    )
+
+
+# ==================== ASSET VERIFICATION ====================
+@router.get(
+    "/verify/{asset_id}",
+    response_model=AssetVerificationFormResponse,
+    summary="Fetch Verification Form Data",
+    description="""
+    Returns prefilled asset information after QR scan.
+
+    **Access:**
+    - **ADMIN**
+    - **CLIENT_ADMIN**
+    - **MANAGER**
+    - **USER** with ASSET_MANAGEMENT.read
+    - **USER** for assigned assets
+
+    **Usage:**
+    - Used by Flutter after QR scanning
+    - Pre-populates verification form with asset data
+    """
+)
+def fetch_verification_data(
+    asset_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    return get_asset_verification_data(
+        db,
+        asset_id,
+        current_user
+    )
+
+
+@router.post(
+    "/{asset_id}/verify",
+    response_model=AssetResponse,
+    summary="Verify Asset",
+    description="""
+    Submit asset verification after QR scan.
+
+    **Access:**
+    - All authenticated users
+    - Normal users can only verify assets assigned to them
+    - Admins can verify any asset
+
+    **Verification Data:**
+    - Asset condition
+    - Location details
+    - Photos
+    - Remarks
+    - Scanner identification
+    """
+)
+def verify_existing_asset(
+    asset_id: str,
+    verification_data: AssetVerificationRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    return asset_service.verify_asset(
+        db,
+        asset_id,
+        verification_data,
+        current_user
+    )
+
+
+# ==================== ASSET AUDIT & LOCATION ====================
+@router.get(
+    "/{asset_id}/audits",
+    response_model=list[AssetAuditResponse],
+    summary="Fetch Asset Audit History",
+    description="""
+    Fetch complete verification and scan history of an asset.
+
+    **Access:**
+    - **ADMIN** → Any asset
+    - **CLIENT_ADMIN** → Assets of their client
+    - **MANAGER** → Assets in departments they manage
+    - **USER** with ASSET_MANAGEMENT.read → All client assets
+    - **USER** → Only assets assigned to them
+
+    **Returns:**
+    - Scan location
+    - Scan images
+    - Asset condition at time of scan
+    - Remarks
+    - Scanner details
+    - Scan timestamp
+    """
+)
+def fetch_asset_audits(
+    asset_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    return get_asset_audits(
+        db,
+        asset_id,
+        current_user
+    )
+
+
+@router.get(
+    "/{asset_id}/location",
+    response_model=AssetLocationResponse,
+    summary="Fetch Asset Location",
+    description="""
+    Fetch latest asset location.
+
+    **Access:**
+    - **ADMIN**
+    - **CLIENT_ADMIN**
+    - **MANAGER**
+    - **USER** with ASSET_MANAGEMENT.read
+    - **USER** for assigned assets only
+
+    **Usage:**
+    - Used by Flutter to display asset on map
+    - Returns latitude, longitude, and timestamp
+    """
+)
+def fetch_asset_location(
+    asset_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    return get_asset_location(
         db,
         asset_id,
         current_user

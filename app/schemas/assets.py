@@ -226,3 +226,14 @@ class AssetQrResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AssetDashboardResponse(BaseModel):
+    total_assets: int
+    tagged_assets: int
+    not_tagged_assets: int
+    active_assets: int
+    inactive_assets: int
+    damaged_assets: int
+    maintenance_assets: int
+    lost_assets: int

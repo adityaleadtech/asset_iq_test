@@ -1041,3 +1041,134 @@ def regenerate_asset_qr(
             status_code=500,
             detail=f"Failed to regenerate QR: {str(e)}"
         )
+
+
+from sqlalchemy.orm import Session
+
+from app.models.asset import Asset
+from app.services.departments import get_managed_department_ids
+
+
+def get_asset_dashboard(
+    db: Session,
+    current_user: dict,
+    client_id: str | None = None
+):
+    """
+    Fetch asset dashboard statistics.
+
+    Access:
+    - ADMIN:
+        • Without client_id -> entire platform
+        • With client_id -> specific client
+
+    - CLIENT_ADMIN:
+        • Own client only
+
+    - MANAGER:
+        • Departments they manage only
+
+    - Custom Roles:
+        • Own client only
+    """
+
+    # Base query
+    query = (
+        db.query(Asset)
+        .filter(
+            Asset.is_active == True
+        )
+    )
+
+    # -------------------------
+    # Client Scoping
+    # -------------------------
+
+    if current_user["role"] == "ADMIN":
+        # Platform admin can optionally filter by client
+        if client_id:
+            query = query.filter(
+                Asset.client_id == client_id
+            )
+
+    else:
+        # Everyone else sees only their client
+        query = query.filter(
+            Asset.client_id == current_user["client_id"]
+        )
+
+    # -------------------------
+    # Department Scoping
+    # -------------------------
+
+    if current_user["role"] == "MANAGER":
+
+        department_ids = (
+            get_managed_department_ids(
+                db,
+                current_user["id"]
+            )
+        )
+
+        query = query.filter(
+            Asset.department_id.in_(department_ids)
+        )
+
+    # -------------------------
+    # Statistics
+    # -------------------------
+
+    total_assets = query.count()
+
+    tagged_assets = (
+        query.filter(
+            Asset.tag_state == "TAGGED"
+        ).count()
+    )
+
+    not_tagged_assets = (
+        query.filter(
+            Asset.tag_state == "NOT_TAGGED"
+        ).count()
+    )
+
+    active_assets = (
+        query.filter(
+            Asset.asset_condition == "ACTIVE"
+        ).count()
+    )
+
+    inactive_assets = (
+        query.filter(
+            Asset.asset_condition == "INACTIVE"
+        ).count()
+    )
+
+    damaged_assets = (
+        query.filter(
+            Asset.asset_condition == "DAMAGED"
+        ).count()
+    )
+
+    maintenance_assets = (
+        query.filter(
+            Asset.asset_condition == "UNDER_MAINTENANCE"
+        ).count()
+    )
+
+    lost_assets = (
+        query.filter(
+            Asset.asset_condition == "LOST"
+        ).count()
+    )
+
+    return {
+        "total_assets": total_assets,
+        "tagged_assets": tagged_assets,
+        "not_tagged_assets": not_tagged_assets,
+        "active_assets": active_assets,
+        "inactive_assets": inactive_assets,
+        "damaged_assets": damaged_assets,
+        "maintenance_assets": maintenance_assets,
+        "lost_assets": lost_assets
+    }

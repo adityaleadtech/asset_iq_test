@@ -653,3 +653,31 @@ def restore_department(
     db.refresh(department)
 
     return department
+
+
+from app.models.departments import Department
+from sqlalchemy.orm import Session
+from app.models.departments import Department
+
+
+def get_managed_department_ids(
+    db: Session,
+    user_id: str
+) -> list[str]:
+    """
+    Return IDs of departments managed by a manager.
+    """
+
+    departments = (
+        db.query(Department.id)
+        .filter(
+            Department.manager_id == user_id,
+            Department.is_active == True
+        )
+        .all()
+    )
+
+    return [
+        department.id
+        for department in departments
+    ]
