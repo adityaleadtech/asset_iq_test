@@ -1,16 +1,19 @@
 from sqlalchemy import Column, String, Boolean, Text, DateTime, UniqueConstraint
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
+
 from app.config.database import Base
+
 
 class Client(Base):
     __tablename__ = "clients"
 
     id = Column(String(36), primary_key=True)
     client_code = Column(String(50), unique=True, nullable=False)
-    name = Column(String(255), nullable=False, unique=True)  # Added unique=True
+    name = Column(String(255), nullable=False, unique=True)
     industry = Column(String(100))
-    contact_email = Column(String(255), nullable=False, unique=True)  # Added unique=True
-    contact_phone = Column(String(50))  # Not unique
+    contact_email = Column(String(255), nullable=False, unique=True)
+    contact_phone = Column(String(50))
     address = Column(Text)
     logo_url = Column(Text)
     is_active = Column(Boolean, nullable=False, default=True)
@@ -20,6 +23,15 @@ class Client(Base):
     address_line_1 = Column(String(255), nullable=False)
     address_line_2 = Column(String(255), nullable=True)
     address_line_3 = Column(String(255), nullable=True)
+    
+    # Relationships
+    assets = relationship("Asset", back_populates="client")
+    users = relationship("User", back_populates="client")
+    departments = relationship("Department", back_populates="client")
+    subscriptions = relationship("Subscription", back_populates="client")
+    asset_categories = relationship("AssetCategory", back_populates="client")
+    asset_types = relationship("AssetType", back_populates="client")
+    locations = relationship("Location", back_populates="client")  # ADD THIS
     
     __table_args__ = (
         UniqueConstraint('name', 'contact_email', name='unique_client_name_email'),

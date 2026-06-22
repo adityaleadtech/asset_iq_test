@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from app.models.service_catalogue import (
     ServiceCatalogue
 )
+from app.services.assets import get_asset_by_id
 
 
 def create_service(
@@ -229,3 +230,36 @@ from app.utils.security import (
     hash_password
 )
 
+
+from sqlalchemy.orm import Session
+from app.models.asset import AssetScanLog
+from app.services.assets import get_asset_by_id
+
+
+def get_asset_audits(
+    db: Session,
+    asset_id: str,
+    current_user: dict
+):
+    """
+    Fetch complete scan history of an asset.
+    """
+
+    asset = get_asset_by_id(
+        db,
+        asset_id,
+        current_user
+    )
+
+    audits = (
+        db.query(AssetScanLog)
+        .filter(
+            AssetScanLog.asset_id == asset.id
+        )
+        .order_by(
+            AssetScanLog.scanned_at.desc()
+        )
+        .all()
+    )
+
+    return audits

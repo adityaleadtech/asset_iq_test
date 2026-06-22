@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     ALGORITHM: str
     EXPIRY: int
 
+    CLOUDINARY_CLOUD_NAME: str
+    CLOUDINARY_API_KEY: str
+    CLOUDINARY_API_SECRET: str
+
+    RESEND_API_KEY: str
+    FRONTEND_URL: str
 
 
     #this class tells where to read the values from 

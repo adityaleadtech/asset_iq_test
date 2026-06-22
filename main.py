@@ -11,6 +11,10 @@ from app.routers.subscription import router as subscription_router
 
 from app.routers.users import router as users_router
 from fastapi.middleware.cors import CORSMiddleware
+from app.config import cloudinary
+
+
+from app.routers import auth
 
 
 app = FastAPI()
@@ -23,6 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(platform_admin_router)
 app.include_router(clients_router)
 app.include_router(client_router)

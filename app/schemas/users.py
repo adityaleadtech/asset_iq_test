@@ -257,3 +257,5 @@ class UserServiceResponse(
 
     class Config:
         from_attributes = True
+
+
