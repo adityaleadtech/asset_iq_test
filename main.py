@@ -8,7 +8,7 @@ from app.routers.role_permission import router as role_permissions_router
 from app.routers.roles import router as roles_router
 from app.routers.services import router as services_router
 from app.routers.subscription import router as subscription_router
-
+from app.routers.location import router as location_router
 from app.routers.users import router as users_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import cloudinary
@@ -27,6 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(location_router)
 app.include_router(auth.router)
 app.include_router(platform_admin_router)
 app.include_router(clients_router)

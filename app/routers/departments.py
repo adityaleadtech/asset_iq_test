@@ -85,7 +85,12 @@ def create_department_for_specific_client(
     client_id: str,
     department: DepartmentCreate,
     db: Session = Depends(get_db),
-    current_admin=Depends(admin_required)
+    current_user=Depends(
+    service_permission_required(
+        "DEPARTMENTS",
+        "create"
+    )
+    )
 ):
     return create_department_for_client(db, client_id, department)
 
@@ -205,7 +210,7 @@ def fetch_department_manager(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    return get_department_manager(db, department_id)
+    return get_department_manager(db, department_id,current_user)
 
 
 @router.patch(

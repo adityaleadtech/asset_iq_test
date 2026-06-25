@@ -31,7 +31,11 @@ class Client(Base):
     subscriptions = relationship("Subscription", back_populates="client")
     asset_categories = relationship("AssetCategory", back_populates="client")
     asset_types = relationship("AssetType", back_populates="client")
-    locations = relationship("Location", back_populates="client")  # ADD THIS
+    locations = relationship(
+    "Location",
+    back_populates="client",
+    cascade="all, delete-orphan"
+)
     
     __table_args__ = (
         UniqueConstraint('name', 'contact_email', name='unique_client_name_email'),

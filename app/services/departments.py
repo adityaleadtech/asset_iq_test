@@ -5,6 +5,58 @@ from app.models.departments import Department
 from app.models.clients import Client
 from app.models.users import User
 from app.models.subscription import Subscription
+from app.models.location import Location
+
+
+# ============================================
+# HELPER: BUILD LOCATION PATH
+# ============================================
+def build_location_path(location):
+    """
+    Builds the complete hierarchical path for a location.
+    
+    Example:
+    Office 12 → Floor 8 → Corporate Office → New Delhi → Delhi → India
+    
+    Returns:
+    [
+        {"id": "country_id", "name": "India", "location_type": "COUNTRY"},
+        {"id": "state_id", "name": "Delhi", "location_type": "STATE"},
+        {"id": "city_id", "name": "New Delhi", "location_type": "CITY"},
+        {"id": "building_id", "name": "Corporate Office", "location_type": "BUILDING"},
+        {"id": "floor_id", "name": "Floor 8", "location_type": "FLOOR"},
+        {"id": "office_id", "name": "Office 12", "location_type": "OFFICE"}
+    ]
+    """
+    if not location:
+        return None
+    
+    path = []
+    current = location
+
+    while current:
+        path.append({
+            "id": current.id,
+            "name": current.name,
+            "location_type": current.location_type
+        })
+        current = current.parent
+
+    path.reverse()
+    return path
+
+
+def get_location_details(location):
+    """
+    Returns location details with full path.
+    """
+    if not location:
+        return None
+    
+    return {
+        "id": location.id,
+        "path": build_location_path(location)
+    }
 
 
 # ============ HELPER FUNCTIONS ============
@@ -174,6 +226,25 @@ def create_department(
             current_user["client_id"]
         )
 
+    # ============================
+    # LOCATION VALIDATION
+    # ============================
+    if department_data.location_id:
+        location = (
+            db.query(Location)
+            .filter(
+                Location.id == department_data.location_id,
+                Location.client_id == current_user["client_id"],
+                Location.is_active == True
+            )
+            .first()
+        )
+        if not location:
+            raise HTTPException(
+                status_code=404,
+                detail="Location not found"
+            )
+
     # Create department
     department = Department(
         id=str(uuid.uuid4()),
@@ -183,6 +254,7 @@ def create_department(
         code=department_data.code,
         description=department_data.description,
         manager_id=department_data.manager_id,
+        location_id=department_data.location_id,
         is_active=True
     )
 
@@ -190,7 +262,23 @@ def create_department(
     db.commit()
     db.refresh(department)
 
-    return department
+    # Return with location details
+    location_data = get_location_details(department.location)
+    
+    return {
+        "id": department.id,
+        "client_id": department.client_id,
+        "parent_department_id": department.parent_department_id,
+        "name": department.name,
+        "code": department.code,
+        "description": department.description,
+        "manager_id": department.manager_id,
+        "location_id": department.location_id,
+        "location": location_data,
+        "is_active": department.is_active,
+        "created_at": department.created_at,
+        "updated_at": department.updated_at
+    }
 
 
 def create_department_for_client(
@@ -256,6 +344,25 @@ def create_department_for_client(
             client_id
         )
 
+    # ============================
+    # LOCATION VALIDATION
+    # ============================
+    if department_data.location_id:
+        location = (
+            db.query(Location)
+            .filter(
+                Location.id == department_data.location_id,
+                Location.client_id == client_id,
+                Location.is_active == True
+            )
+            .first()
+        )
+        if not location:
+            raise HTTPException(
+                status_code=404,
+                detail="Location not found"
+            )
+
     # Create department
     department = Department(
         id=str(uuid.uuid4()),
@@ -265,6 +372,7 @@ def create_department_for_client(
         code=department_data.code,
         description=department_data.description,
         manager_id=department_data.manager_id,
+        location_id=department_data.location_id,
         is_active=True
     )
 
@@ -272,7 +380,23 @@ def create_department_for_client(
     db.commit()
     db.refresh(department)
 
-    return department
+    # Return with location details
+    location_data = get_location_details(department.location)
+    
+    return {
+        "id": department.id,
+        "client_id": department.client_id,
+        "parent_department_id": department.parent_department_id,
+        "name": department.name,
+        "code": department.code,
+        "description": department.description,
+        "manager_id": department.manager_id,
+        "location_id": department.location_id,
+        "location": location_data,
+        "is_active": department.is_active,
+        "created_at": department.created_at,
+        "updated_at": department.updated_at
+    }
 
 
 # ============ READ FUNCTIONS ============
@@ -291,15 +415,16 @@ def get_departments(
     """
     # Platform Admin sees all departments
     if current_user["role"] == "ADMIN":
-        return (
+        departments = (
             db.query(Department)
             .filter(Department.is_active == True)
             .all()
         )
+        return [_format_department_response(dept) for dept in departments]
     
     # Client Admin sees all departments for their client
     if current_user["role"] == "CLIENT_ADMIN":
-        return (
+        departments = (
             db.query(Department)
             .filter(
                 Department.client_id == current_user["client_id"],
@@ -307,10 +432,11 @@ def get_departments(
             )
             .all()
         )
+        return [_format_department_response(dept) for dept in departments]
     
     # Manager sees only departments they manage
     if current_user["role"] == "MANAGER":
-        return (
+        departments = (
             db.query(Department)
             .filter(
                 Department.manager_id == current_user["id"],
@@ -318,10 +444,30 @@ def get_departments(
             )
             .all()
         )
+        return [_format_department_response(dept) for dept in departments]
     
     # USER - no access to departments
-    # Return empty list instead of exposing department data
     return []
+
+
+def _format_department_response(department):
+    """Helper to format department with location details"""
+    location_data = get_location_details(department.location)
+    
+    return {
+        "id": department.id,
+        "client_id": department.client_id,
+        "parent_department_id": department.parent_department_id,
+        "name": department.name,
+        "code": department.code,
+        "description": department.description,
+        "manager_id": department.manager_id,
+        "location_id": department.location_id,
+        "location": location_data,
+        "is_active": department.is_active,
+        "created_at": department.created_at,
+        "updated_at": department.updated_at
+    }
 
 
 def get_departments_by_client(
@@ -331,7 +477,7 @@ def get_departments_by_client(
     """
     Get all departments for a specific client (ADMIN only)
     """
-    return (
+    departments = (
         db.query(Department)
         .filter(
             Department.client_id == client_id,
@@ -339,6 +485,7 @@ def get_departments_by_client(
         )
         .all()
     )
+    return [_format_department_response(dept) for dept in departments]
 
 
 def get_department_by_id(
@@ -371,7 +518,7 @@ def get_department_by_id(
 
     # ADMIN - can access any department
     if current_user["role"] == "ADMIN":
-        return department
+        return _format_department_response(department)
     
     # CLIENT_ADMIN - can access departments for their client
     if current_user["role"] == "CLIENT_ADMIN":
@@ -380,7 +527,7 @@ def get_department_by_id(
                 status_code=403,
                 detail="Access denied"
             )
-        return department
+        return _format_department_response(department)
     
     # MANAGER - can only access departments they manage
     if current_user["role"] == "MANAGER":
@@ -389,7 +536,7 @@ def get_department_by_id(
                 status_code=403,
                 detail="Access denied. You do not manage this department"
             )
-        return department
+        return _format_department_response(department)
     
     # USER - no access to departments
     raise HTTPException(
@@ -405,7 +552,7 @@ def get_deactivated_departments_by_client(
     """
     Get all deactivated departments for a client (ADMIN only)
     """
-    return (
+    departments = (
         db.query(Department)
         .filter(
             Department.client_id == client_id,
@@ -413,6 +560,7 @@ def get_deactivated_departments_by_client(
         )
         .all()
     )
+    return [_format_department_response(dept) for dept in departments]
 
 
 def get_department_manager(
@@ -436,7 +584,7 @@ def get_department_manager(
     )
     
     # If we got here, access is granted
-    if not department.manager_id:
+    if not department["manager_id"]:
         raise HTTPException(
             status_code=404,
             detail="No manager assigned to this department"
@@ -445,7 +593,7 @@ def get_department_manager(
     manager = (
         db.query(User)
         .filter(
-            User.id == department.manager_id,
+            User.id == department["manager_id"],
             User.role == "MANAGER",
             User.is_active == True
         )
@@ -542,6 +690,26 @@ def update_department(
                 department.client_id
             )
 
+    # ============================
+    # LOCATION VALIDATION
+    # ============================
+    if "location_id" in update_data:
+        if update_data["location_id"]:
+            location = (
+                db.query(Location)
+                .filter(
+                    Location.id == update_data["location_id"],
+                    Location.client_id == department.client_id,
+                    Location.is_active == True
+                )
+                .first()
+            )
+            if not location:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Location not found"
+                )
+
     for key, value in update_data.items():
         setattr(
             department,
@@ -552,7 +720,8 @@ def update_department(
     db.commit()
     db.refresh(department)
 
-    return department
+    # Return with location details
+    return _format_department_response(department)
 
 
 # ============ DELETE/DEACTIVATE FUNCTIONS ============
@@ -600,7 +769,7 @@ def deactivate_department(
     db.commit()
     db.refresh(department)
 
-    return department
+    return _format_department_response(department)
 
 
 def restore_department(
@@ -652,12 +821,7 @@ def restore_department(
     db.commit()
     db.refresh(department)
 
-    return department
-
-
-from app.models.departments import Department
-from sqlalchemy.orm import Session
-from app.models.departments import Department
+    return _format_department_response(department)
 
 
 def get_managed_department_ids(

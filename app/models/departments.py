@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import CHAR, Column, String, Text, Boolean, DateTime, ForeignKey
 from datetime import datetime
 from sqlalchemy.orm import relationship
 
@@ -38,6 +38,17 @@ class Department(Base):
         foreign_keys="User.department_id",  # FIXED: removed brackets
         back_populates="department"
     )
-    
+    location_id = Column(
+    CHAR(36),
+    ForeignKey("locations.id"),
+    nullable=True
+)
+
+    location = relationship(
+    "Location",
+    back_populates="departments"
+)
     # Department.assets relationship
     assets = relationship("Asset", back_populates="department")
+
+    

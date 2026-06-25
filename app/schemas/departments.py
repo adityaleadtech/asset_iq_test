@@ -14,7 +14,7 @@ class DepartmentCreate(
     code: Optional[str] = None
 
     description: Optional[str] = None
-
+    location_id: str | None = None
     manager_id: Optional[str] = None
 
 
@@ -31,6 +31,7 @@ class DepartmentUpdate(
 
     manager_id: Optional[str] = None
 
+    location_id: str | None = None  # ADD THIS
 
 class DepartmentResponse(
     BaseModel
@@ -54,7 +55,23 @@ class DepartmentResponse(
     created_at: datetime
 
     updated_at: datetime
+    location_id: str | None = None
 
-    class Config:
-        from_attributes = True
+    
+    location: LocationDetails | None = None
+
+    model_config = {
+        "from_attributes": True
+    }
+    
+
+class LocationPathItem(BaseModel):
+    id: str
+    name: str
+    location_type: str
+
+
+class LocationDetails(BaseModel):
+    id: str
+    path: list[LocationPathItem]
 

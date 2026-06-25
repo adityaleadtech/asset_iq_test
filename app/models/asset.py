@@ -67,7 +67,22 @@ class Asset(Base):
     
     # Relationships
     client = relationship("Client", back_populates="assets")
-    location = relationship("Location", back_populates="assets")
+    location_id = Column(
+    CHAR(36),
+    ForeignKey("locations.id"),
+    nullable=True
+)
+    transfers = relationship(
+    "Transfer",
+    back_populates="asset",
+    cascade="all, delete-orphan"
+)
+
+    location = relationship(
+    "Location",
+    back_populates="assets"
+)
+    
     category = relationship("AssetCategory", back_populates="assets")
     asset_type = relationship("AssetType", back_populates="assets")
     department = relationship("Department", back_populates="assets")
@@ -78,6 +93,17 @@ class Asset(Base):
     
     # Relationship to scan logs
     scan_logs = relationship("AssetScanLog", back_populates="asset", cascade="all, delete-orphan")
+    maintenance_tasks = relationship(
+    "MaintenanceTask",
+    back_populates="asset",
+    cascade="all, delete-orphan"
+)
+    from sqlalchemy import JSON
+
+    custom_fields = Column(
+    JSON,
+    nullable=True
+)
 
 
 class AssetScanLog(Base):
@@ -120,30 +146,3 @@ class AssetScanLog(Base):
     asset = relationship("Asset", back_populates="scan_logs")
     scanner = relationship("User", foreign_keys=[scanned_by])
 
-
-class Location(Base):
-    """Business locations for assets"""
-    __tablename__ = "locations"
-
-    id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    client_id = Column(CHAR(36), ForeignKey("clients.id"), nullable=False)
-    
-    name = Column(String(255), nullable=False)
-    code = Column(String(50), nullable=True)
-    address = Column(Text, nullable=True)
-    city = Column(String(100), nullable=True)
-    state = Column(String(100), nullable=True)
-    country = Column(String(100), nullable=True)
-    pincode = Column(String(20), nullable=True)
-    
-    # GPS coordinates of the location
-    latitude = Column(Float, nullable=True)
-    longitude = Column(Float, nullable=True)
-    
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, onupdate=func.now())
-    
-    # Relationships
-    client = relationship("Client", back_populates="locations")
-    assets = relationship("Asset", back_populates="location")

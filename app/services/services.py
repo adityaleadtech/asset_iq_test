@@ -263,3 +263,137 @@ def get_asset_audits(
     )
 
     return audits
+
+
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
+from app.models.location import Location
+
+
+def get_location_by_id(
+    db: Session,
+    location_id: str,
+    client_id: str
+):
+    location = (
+        db.query(Location)
+        .filter(
+            Location.id == location_id,
+            Location.client_id == client_id,
+            Location.is_active == True
+        )
+        .first()
+    )
+
+    if not location:
+        raise HTTPException(
+            status_code=404,
+            detail="Location not found."
+        )
+
+    return location
+
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
+from app.models.location import Location
+
+def update_location(
+    db: Session,
+    location_id: str,
+    payload,
+    client_id: str
+):
+    location = (
+        db.query(Location)
+        .filter(
+            Location.id == location_id,
+            Location.client_id == client_id,
+            Location.is_active == True
+        )
+        .first()
+    )
+
+    if not location:
+        raise HTTPException(
+            status_code=404,
+            detail="Location not found."
+        )
+
+    updates = payload.model_dump(
+        exclude_unset=True
+    )
+
+    for field, value in updates.items():
+        setattr(location, field, value)
+
+    db.commit()
+    db.refresh(location)
+
+    return location
+
+def delete_location(
+    db: Session,
+    location_id: str,
+    client_id: str
+):
+    location = (
+        db.query(Location)
+        .filter(
+            Location.id == location_id,
+            Location.client_id == client_id,
+            Location.is_active == True
+        )
+        .first()
+    )
+
+    if not location:
+        raise HTTPException(
+            status_code=404,
+            detail="Location not found."
+        )
+
+    active_children = (
+        db.query(Location)
+        .filter(
+            Location.parent_location_id == location_id,
+            Location.is_active == True
+        )
+        .count()
+    )
+
+    if active_children:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot delete location because "
+                "child locations exist."
+            )
+        )
+
+    if location.assets:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot delete location because "
+                "assets are assigned."
+            )
+        )
+
+    if location.departments:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot delete location because "
+                "departments are assigned."
+            )
+        )
+
+    location.is_active = False
+
+    db.commit()
+
+    return {
+        "message": "Location deleted successfully."
+    }

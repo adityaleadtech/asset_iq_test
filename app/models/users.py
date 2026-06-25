@@ -55,6 +55,15 @@ class User(Base):
         foreign_keys="Asset.created_by",
         back_populates="created_by_user"
     )
+    raised_maintenance_tasks = relationship(
+    "MaintenanceTask",
+    foreign_keys="[MaintenanceTask.raised_by]"
+)
+
+    approved_maintenance_tasks = relationship(
+    "MaintenanceTask",
+    foreign_keys="[MaintenanceTask.approved_by]"
+)
     
     scanned_assets = relationship(
         "Asset",
