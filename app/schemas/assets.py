@@ -523,23 +523,17 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 
+
+
 class CreateMaintenanceRequest(
     BaseModel
 ):
     issue_description: str
-    photos_urls: Optional[
-        List[str]
-    ] = None
-    estimated_cost: Optional[
-        Decimal
-    ] = None
+    photos_urls: list[str] = []
+    estimated_cost: Decimal | None = None
     is_emergency: bool = False
-    vendor_name: Optional[
-        str
-    ] = None
+    vendor_name: str | None = None
 
-from datetime import datetime
-from decimal import Decimal
 
 
 class MaintenanceTaskResponse(
@@ -550,20 +544,29 @@ class MaintenanceTaskResponse(
     client_id: str
     raised_by: str
     issue_description: str
-    photos_urls: Optional[
-        List[str]
-    ]
-    estimated_cost: Optional[
-        Decimal
-    ]
+
+    photos_urls: list[str] = []
+
+    estimated_cost: Decimal | None = None
     is_emergency: bool
     status: str
-    vendor_name: Optional[str]
-    completed_at: Optional[
-        datetime
-    ]
+
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    vendor_name: str | None = None
+    parts_replaced: list[str] = []
+
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
+
+class RejectMaintenanceRequest(
+    BaseModel
+):
+    rejection_reason: str
