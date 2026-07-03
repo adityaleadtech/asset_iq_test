@@ -31,6 +31,9 @@ def createAdmin(admin:PlatformAdminCreation,db:Session=Depends(get_db)):
     return create_platform_admin(db,admin)
 
 
+
+
+"""
 @router.post(
     "/login",
     response_model=TokenResponse
@@ -55,3 +58,6 @@ def login(
         "access_token": token,
         "token_type": "bearer"
     }
+
+
+"""

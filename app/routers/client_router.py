@@ -39,7 +39,7 @@ def create_client_admin_route(
 ):
     return create_client_admin(db, admin_data)
 
-
+"""
 @router.post("/login", response_model=TokenResponse)
 def login(
     credentials: ClientAdminLogin,
@@ -52,6 +52,7 @@ def login(
 
     return {"access_token": token, "token_type": "bearer"}
 
+"""
 
 @router.get("/me", response_model=ClientAdminProfileResponse)
 def get_profile(

@@ -110,7 +110,7 @@ def transfer_asset(
                 detail="User not found."
             )
 
-        if user.client_id != asset.client_id:
+        if user.client_id != asset.get("client_id"):
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -150,44 +150,42 @@ def transfer_asset(
     #
     # Create transfer record
     #
-    transfer = Transfer(
-        asset_id=asset.id,
-        client_id=asset.client_id,
-
-        from_location_id=asset.location_id,
+        transfer = Transfer(
+        asset_id=asset.get("id"),  # ✅ Use .get() for dict
+        client_id=asset.get("client_id"),
+        
+        from_location_id=asset.get("location_id"),
         to_location_id=payload.location_id,
-
-        from_department_id=asset.department_id,
+        
+        from_department_id=asset.get("department_id"),
         to_department_id=payload.department_id,
-
-        from_user_id=asset.assigned_to_user_id,
+        
+        from_user_id=asset.get("assigned_to_user_id"),
         to_user_id=payload.assigned_to_user_id,
-
+        
         transfer_type=transfer_type,
         transfer_reason=payload.transfer_reason,
         notes=payload.notes,
-
+        
         transferred_by=current_user["id"],
         status="COMPLETED"
     )
 
-    db.add(transfer)
+        db.add(transfer)
 
     #
     # Update asset
     #
     if payload.location_id:
-        asset.location_id = payload.location_id
+        asset["location_id"] = payload.location_id  # ✅ Dict assignment
 
     if payload.department_id:
-        asset.department_id = payload.department_id
+        asset["department_id"] = payload.department_id
 
     if payload.assigned_to_user_id:
-        asset.assigned_to_user_id = (
-            payload.assigned_to_user_id
-        )
+        asset["assigned_to_user_id"] = payload.assigned_to_user_id
 
     db.commit()
-    db.refresh(asset)
+   
 
     return asset

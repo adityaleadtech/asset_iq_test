@@ -124,8 +124,8 @@ class AssetSearchResponse(BaseModel):
 @router.get(
     "/dashboard",
     response_model=AssetDashboardResponse,
-    summary="Asset Dashboard",
-    description="Get asset dashboard analytics and statistics."
+    summary="Asset Dashboard Role based",
+    description="Get asset dashboard analytics and statistics. Client admin can see their own assets, User with asset_management can see their own assets(Client) platform admin can see all assets with no query parameters and with query parameters they can see specific clients assets "
 )
 def fetch_asset_dashboard(
     client_id: str | None = None,
@@ -138,7 +138,8 @@ def fetch_asset_dashboard(
 @router.get(
     "/search",
     response_model=AssetSearchResponse,
-    summary="Search Assets"
+    summary="Search Assets",
+    description="search assets based on various filters and search terms. The results are paginated and sorted based on the provided parameters."
 )
 def search_assets_endpoint(
     current_user: dict = Depends(check_permission("ASSET_MANAGEMENT", "read")),
@@ -190,7 +191,8 @@ def search_assets_endpoint(
 @router.get(
     "/stats/conditions",
     response_model=AssetConditionStatsResponse,
-    summary="Fetch Asset Condition Statistics"
+    summary="Fetch Asset Condition Statistics",
+    description="fetch stats of assets conditions like \nACTIVE,\nINACTIVE,\nDAMAGED,\nUNDER_MAINTENANCE,\nLOST based on the client of the current user. Platform admin can pass client_id as query parameter to get stats of specific client"
 )
 def fetch_asset_condition_stats(
     client_id: str | None = None,
@@ -202,7 +204,8 @@ def fetch_asset_condition_stats(
 @router.get(
     "/stats/tagging",
     response_model=AssetTaggingStatsResponse,
-    summary="Fetch Asset Tagging Statistics"
+    summary="Fetch Asset Tagging Statistics",
+    description="Tagging stats of assets are \n-TAGGED or \n-NOT_TAGGED \nbased on the client of the current user. Platform admin can pass client_id as query parameter to get stats of specific client"
 )
 def fetch_asset_tagging_stats(
     client_id: str | None = None,
@@ -215,21 +218,36 @@ def fetch_asset_tagging_stats(
 @router.post(
     "/bulk",
     status_code=status.HTTP_201_CREATED,
-    summary="Bulk Create Assets"
+    summary="Bulk Create Assets (Accessible to Client Admins, ADMIN and Platform Admins)",
+    description="Bulk create assets. The assets will be associated with the client of the current user. Platform admin can pass client_id in the payload to create assets for specific client"
 )
 def create_assets_bulk(
     payload: AssetBulkCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(client_admin_required)
+    current_user=Depends(check_permission("ASSET_MANAGEMENT", "create")),
+    client_id: str | None = None
 ):
-    return bulk_create_assets(
+    print("_________________________________"+str(current_user))
+    if(current_user["role"]=="ADMIN"  and not client_id):
+        raise HTTPException(status_code=400, detail="client_id is required for platform admin")
+    if(current_user["role"]=="ADMIN"  and client_id):
+        payload.client_id=client_id
+        return bulk_create_assets(
+        db=db,
+        payload=payload,
+        client_id=payload.client_id,
+        created_by=current_user["id"]
+        )
+    else:
+        return bulk_create_assets(
         db=db,
         payload=payload,
         client_id=current_user["client_id"],
         created_by=current_user["id"]
-    )
+        )
 
 # ==================== MY ASSETS (MUST COME BEFORE /{asset_id}) ====================
+#to fix Platform admin to see specific user's asset
 @router.get(
     "/my-assets",
     response_model=list[AssetResponse],
@@ -243,6 +261,8 @@ USER:
 MANAGER:
 - Assets assigned to the manager.
 - Assets belonging to the manager's department.
+PLATFORM ADMIN
+- Can see all assets, but must provide user_id query parameter to see specific user's assets.   
 """
 )
 def get_my_assets_router(
@@ -252,11 +272,22 @@ def get_my_assets_router(
             "ASSET_MANAGEMENT",
             "read"
         )
-    )
+    ),
+    user_id: str | None = None
 ):
+    print("______________________________________________________________________________________________________________________________"+str(current_user.get("role")))
+    if current_user.get("role") == "ADMIN":
+        if not user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="user_id is required for platform admin"
+            )
+        
+        
     return get_my_assets(
         db,
-        current_user
+        current_user,
+        user_id
     )
 
 # ==================== MAINTENANCE TASKS (MUST COME BEFORE /{asset_id}) ====================
@@ -369,7 +400,8 @@ def start_maintenance_task(
     return (
         start_maintenance(
             db,
-            maintenance_id
+            maintenance_id,
+            current_user
         )
     )
 

@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
+from app.models.Audit_trail import AuditTrail
 from app.models.asset import Asset, AssetScanLog
 from app.models.maintenance_task import MaintenanceTask
 from app.models.subscription import Subscription
@@ -17,6 +18,8 @@ from app.models.users import User
 from app.models.location import Location
 from app.schemas.assets import AssetBulkCreate, AssetVerificationRequest, CreateMaintenanceRequest, MarkLostRequest, RejectMaintenanceRequest
 from app.utils.qr import generate_asset_qr
+from datetime import datetime, timezone
+
 
 
 # ============================================
@@ -614,9 +617,11 @@ def get_asset_by_id(db: Session, asset_id: str, current_user: dict):
     location_data = None
     if asset.location:
         location_data = {
-            "id": asset.location.id,
-            "path": build_location_path(asset.location)
-        }
+        "id": asset.location.id,
+        "name": asset.location.name,                       # ✅ ADD THIS
+        "location_type": asset.location.location_type,     # ✅ ADD THIS
+        "path": build_location_path(asset.location)
+    }
 
     # Convert asset to dict
     asset_dict = {
@@ -1385,7 +1390,7 @@ def verify_asset(
     # RBAC validation
     get_asset_by_id(db, asset_id, current_user)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     asset.current_latitude = verification_data.latitude
     asset.current_longitude = verification_data.longitude
@@ -1476,7 +1481,7 @@ def get_asset_audits(
     audits = (
         db.query(AssetScanLog)
         .filter(
-            AssetScanLog.asset_id == asset.id
+            AssetScanLog.asset_id == asset['id']
         )
         .order_by(
             AssetScanLog.scanned_at.desc()
@@ -1764,8 +1769,6 @@ def get_asset_dashboard(
         "lost_assets": lost_assets
     }
 
-
-
 def bulk_create_assets(
     db: Session,
     payload: AssetBulkCreate,
@@ -1775,41 +1778,132 @@ def bulk_create_assets(
     created_count = 0
     errors = []
 
-    for index, item in enumerate(payload.assets):
+    if(payload.client_id and client_id):
+        admin_client = db.query(User).filter(User.client_id == client_id, User.role=="CLIENT_ADMIN").first()
+        for index, item in enumerate(payload.assets):
+            try:
+                category = (
+                    db.query(AssetCategory)
+                    .filter(
+                        AssetCategory.client_id == client_id,
+                        AssetCategory.id == item.category
+                    )
+                    .first()
+                )
 
-        try:
-            category = (
+                if not category:
+                    raise Exception(
+                        f"Category '{item.category}' not found."
+                    )
+
+                asset_type = (
+                    db.query(AssetType)
+                    .filter(
+                        AssetType.client_id == client_id,
+                        AssetType.id == item.type
+                    )
+                    .first()
+                )
+
+                if not asset_type:
+                    raise Exception(
+                        f"Type '{item.type}' not found."
+                    )
+
+                department = None
+
+                if item.department:
+                    department = (
+                        db.query(Department)
+                        .filter(
+                            Department.client_id == client_id,
+                            Department.name == item.department
+                        )
+                        .first()
+                    )
+
+                location = None
+
+                if item.location:
+                    location = (
+                        db.query(Location)
+                        .filter(
+                            Location.client_id == client_id,
+                            Location.name == item.location
+                        )
+                        .first()
+                    )
+
+                asset = Asset(
+                    client_id=client_id,
+                    category_id=category.id,
+                    type_id=asset_type.id,
+                    department_id=department.id if department else None,
+                    location_id=location.id if location else None,
+
+                    name=item.name,
+                    description=item.description,
+                    serial_number=item.serial_number,
+                    model=item.model,
+                    manufacturer=item.manufacturer,
+                    purchase_value=item.purchase_value,
+
+                    created_image_url=item.created_image_url,
+                    latest_image_url=(
+                        item.latest_image_url
+                        or item.created_image_url
+                    ),
+
+                    created_by=admin_client.id
+                )
+
+                db.add(asset)
+                created_count += 1
+
+            except Exception as e:
+                errors.append({
+                    "row": index + 1,
+                    "error": str(e)
+                })
+
+            db.commit()
+
+    else:
+        for index, item in enumerate(payload.assets):
+
+            try:
+                category = (
                 db.query(AssetCategory)
                 .filter(
                     AssetCategory.client_id == client_id,
-                    AssetCategory.name == item.category
+                    AssetCategory.id == item.category
                 )
                 .first()
             )
 
-            if not category:
-                raise Exception(
+                if not category:
+                    raise Exception(
                     f"Category '{item.category}' not found."
                 )
 
-            asset_type = (
+                asset_type = (
                 db.query(AssetType)
                 .filter(
                     AssetType.client_id == client_id,
-                    AssetType.name == item.type
+                    AssetType.id == item.type
                 )
                 .first()
             )
 
-            if not asset_type:
-                raise Exception(
+                if not asset_type:
+                    raise Exception(
                     f"Type '{item.type}' not found."
                 )
 
-            department = None
+                department = None
 
-            if item.department:
-                department = (
+                if item.department:
+                    department = (
                     db.query(Department)
                     .filter(
                         Department.client_id == client_id,
@@ -1818,10 +1912,10 @@ def bulk_create_assets(
                     .first()
                 )
 
-            location = None
+                location = None
 
-            if item.location:
-                location = (
+                if item.location:
+                    location = (
                     db.query(Location)
                     .filter(
                         Location.client_id == client_id,
@@ -1830,7 +1924,7 @@ def bulk_create_assets(
                     .first()
                 )
 
-            asset = Asset(
+                asset = Asset(
                 client_id=client_id,
                 category_id=category.id,
                 type_id=asset_type.id,
@@ -1853,16 +1947,16 @@ def bulk_create_assets(
                 created_by=created_by
             )
 
-            db.add(asset)
-            created_count += 1
+                db.add(asset)
+                created_count += 1
 
-        except Exception as e:
-            errors.append({
+            except Exception as e:
+                errors.append({
                 "row": index + 1,
                 "error": str(e)
             })
 
-    db.commit()
+        db.commit()
 
     return {
         "message": f"{created_count} assets created.",
@@ -1870,7 +1964,6 @@ def bulk_create_assets(
         "failed_count": len(errors),
         "errors": errors
     }
-
 from app.models.asset import Asset
 from app.models.departments import Department
 from sqlalchemy.orm import Session
@@ -2337,7 +2430,7 @@ def get_asset_transfers(
         )
         .filter(
             Transfer.asset_id
-            == asset.id
+            == asset.get("id")
         )
         .order_by(
             Transfer.transferred_at.desc()
@@ -2555,7 +2648,7 @@ def mark_asset_lost(
 
     audit = AuditTrail(
         entity_type="ASSET",
-        entity_id=asset.id,
+        entity_id=asset.get("id"),
         action="MARK_LOST",
         old_value=old_condition,
         new_value="LOST",
@@ -2589,9 +2682,9 @@ def get_asset_timeline(
     #
     creator_name = None
 
-    if asset.created_by_user:
+    if asset.get("created_by_user"):
         creator_name = (
-            asset.created_by_user.full_name
+            asset.get("created_by_user").full_name
         )
 
     timeline.append(
@@ -2599,11 +2692,11 @@ def get_asset_timeline(
             "event_type": "CREATED",
             "title": "Asset Created",
             "description":
-            f"{asset.name} created",
+            f"{asset.get('name')} created",
             "performed_by":
             creator_name,
             "created_at":
-            asset.created_at
+            asset.get("created_at")
         }
     )
 
@@ -2614,7 +2707,7 @@ def get_asset_timeline(
         db.query(AssetScanLog)
         .filter(
             AssetScanLog.asset_id
-            == asset.id
+            == asset.get("id")
         )
         .order_by(
             AssetScanLog.scanned_at
@@ -2657,7 +2750,7 @@ def get_asset_timeline(
         db.query(Transfer)
         .filter(
             Transfer.asset_id
-            == asset.id
+            == asset.get("id")
         )
         .order_by(
             Transfer.transferred_at
@@ -2711,7 +2804,7 @@ def get_asset_timeline(
         db.query(MaintenanceTask)
         .filter(
             MaintenanceTask.asset_id
-            == asset.id
+            == asset.get("id")
         )
         .all()
     )
@@ -2727,7 +2820,7 @@ def get_asset_timeline(
                 "Maintenance Created",
 
                 "description":
-                task.title,
+                task.issue_description,
 
                 "performed_by":
                 None,
@@ -2746,7 +2839,7 @@ def get_asset_timeline(
             AuditTrail.entity_type
             == "ASSET",
             AuditTrail.entity_id
-            == asset.id
+            == asset.get("id")
         )
         .all()
     )
@@ -2802,24 +2895,41 @@ from app.models.asset import Asset
 
 def get_my_assets(
     db: Session,
-    current_user: dict
+    current_user: dict,
+    user_id: str | None = None
 ):
+    
+    #for platform admin 
+    print("current_user.get('role')",current_user.get("role"))
+    print("user_id",user_id)
+    if(current_user.get("role") == "ADMIN" and user_id):
+        print("CA+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL")
+        query=(db.query(Asset).filter(Asset.assigned_to_user_id==user_id,Asset.is_active==True))
+        return (
+        query
+        .order_by(
+            Asset.name.asc()
+        )
+        .all()
+    )
+
     query = (
         db.query(Asset)
         .filter(
             Asset.client_id
-            == current_user["client_id"],
+            == current_user.get("client_id"),
             Asset.is_active
             == True
         )
     )
+
 
     #
     # Manager:
     # - Own assigned assets
     # - Assets in manager's department
     #
-    if current_user["role"] == "MANAGER":
+    if current_user.get("role") == "MANAGER":
 
         #
         # Manager has no department
@@ -2829,7 +2939,7 @@ def get_my_assets(
         ):
             query = query.filter(
                 Asset.assigned_to_user_id
-                == current_user["id"]
+                == current_user.get("id")
             )
 
         #
@@ -2839,12 +2949,12 @@ def get_my_assets(
             query = query.filter(
                 or_(
                     Asset.assigned_to_user_id
-                    == current_user["id"],
+                    == current_user.get("id"),
 
                     Asset.department_id
-                    == current_user[
+                    == current_user.get(
                         "department_id"
-                    ]
+                    )
                 )
             )
 
@@ -2855,7 +2965,7 @@ def get_my_assets(
     else:
         query = query.filter(
             Asset.assigned_to_user_id
-            == current_user["id"]
+            == current_user.get("id")
         )
 
     return (
@@ -2999,7 +3109,7 @@ def approve_maintenance(
 
     task.status = "approved"
     task.approved_by = current_user["id"]
-    task.approved_at = datetime.utcnow()
+    task.approved_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(task)
@@ -3010,6 +3120,7 @@ def start_maintenance(
     db: Session,
     maintenance_id: str,
     current_user: dict
+
 ):
     task = (
         db.query(MaintenanceTask)
@@ -3019,6 +3130,11 @@ def start_maintenance(
         )
         .first()
     )
+    print("++++++++++++++++++++++++==")
+    print(task)
+    print(maintenance_id)
+    print(current_user)
+    print("++++++++++++++++++++++++++")
 
     if not task:
         raise HTTPException(
@@ -3039,7 +3155,7 @@ def start_maintenance(
         )
 
     task.status = "in_progress"
-    task.started_at = datetime.utcnow()
+    task.started_at = datetime.now(timezone.utc)
 
     asset = (
         db.query(Asset)
@@ -3094,7 +3210,7 @@ def complete_maintenance(
         )
 
     task.status = "completed"
-    task.completed_at = datetime.utcnow()
+    task.completed_at = datetime.now(timezone.utc)
 
     asset = (
         db.query(Asset)
@@ -3151,65 +3267,6 @@ def approve_maintenance(
 
     task.status = "approved"
     task.approved_by = current_user["id"]
-
-    db.commit()
-    db.refresh(task)
-
-    return task
-
-
-
-
-def start_maintenance(
-    db: Session,
-    maintenance_id: str
-):
-    task = (
-        db.query(
-            MaintenanceTask
-        )
-        .filter(
-            MaintenanceTask.id
-            ==
-            maintenance_id
-        )
-        .first()
-    )
-
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail=
-            "Maintenance task not found."
-        )
-
-    if (
-        task.status
-        !=
-        "approved"
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail=
-            "Task is not approved."
-        )
-
-    task.status ="in_progress"
-
-    asset = (
-        db.query(Asset)
-        .filter(
-            Asset.id
-            ==
-            task.asset_id
-        )
-        .first()
-    )
-
-    if asset:
-        asset.asset_condition = (
-            "UNDER_MAINTENANCE"
-        )
 
     db.commit()
     db.refresh(task)

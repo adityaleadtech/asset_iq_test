@@ -37,7 +37,9 @@ router = APIRouter(
 
 @router.post(
     "",
-    response_model=RoleResponse
+    response_model=RoleResponse,
+    summary="Create a new role, accessible to client admins",
+    description="This endpoint allows client admins to create a new role within the system. The role will be associated with the client of the current user. A Role is a custom name for the services that will be associated with them"
 )
 def create_new_role(
     role: RoleCreate,
@@ -62,7 +64,9 @@ from app.services.roles import (
 
 @router.get(
     "",
-    response_model=list[RoleResponse]
+    response_model=list[RoleResponse],
+    summary="Fetch all roles, accessible to client admins",
+    description="This endpoint allows client admins to fetch all roles associated with their client. The roles will be filtered based on the client of the current user."
 )
 def fetch_roles(
     db: Session = Depends(get_db),
@@ -80,6 +84,7 @@ def fetch_roles(
 @router.get(
     "/{role_id}",
     response_model=RoleResponse
+    ,summary="fetch custom role by id, accessible to client admins",
 )
 def fetch_role(
     role_id: str,

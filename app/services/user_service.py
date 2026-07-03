@@ -267,11 +267,18 @@ def create_manager(db, manager_data, current_user):
         )
 
 
-def get_all_managers(db, current_user):
-    query = db.query(User).filter(User.role == "MANAGER", User.is_active == True)
+def get_all_managers(db, current_user,client_id: str | None = None):
+    if current_user["role"] == "ADMIN" and client_id:
+        return db.query(User).filter(User.role=="MANAGER",User.is_active==True,User.client_id==client_id).all()    
 
     if current_user["role"] == "CLIENT_ADMIN":
         query = query.filter(User.client_id == current_user["client_id"])
+        return query.filter(User.role == "MANAGER", User.is_active == True).all()
+
+
+    query = db.query(User).filter(User.role == "MANAGER", User.is_active == True)
+    
+   
 
     return query.all()
 
@@ -472,7 +479,7 @@ def restore_manager(db, manager_id: str, current_user):
 
 # ── Users ─────────────────────────────────────────────────────────────────────
 
-def create_user(db, user_data, current_user):
+def create_user(db, user_data, current_user,client_id:str|None=None):
     try:
         existing_user = (
             db.query(User)
@@ -484,9 +491,9 @@ def create_user(db, user_data, current_user):
             raise HTTPException(status_code=400, detail="Email already exists")
 
         if current_user["role"] == "ADMIN":
-            if not user_data.client_id:
+            if not client_id:
                 raise HTTPException(status_code=400, detail="client_id is required")
-            client_id = user_data.client_id
+            client_id = client_id
         else:
             client_id = current_user["client_id"]
 
@@ -602,7 +609,9 @@ def create_user(db, user_data, current_user):
         )
 
 
-def get_users(db, current_user):
+def get_users(db, current_user,client_id: str | None = None):
+    if current_user["role"]=="ADMIN" and client_id:
+        return db.query(User).filter(User.is_active == True, User.client_id == client_id).all()
     if current_user["role"] == "ADMIN":
         return db.query(User).filter(User.is_active == True).all()
 

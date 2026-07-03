@@ -33,6 +33,8 @@ class DepartmentUpdate(
 
     location_id: str | None = None  # ADD THIS
 
+    is_active: Optional[bool] = None
+
 class DepartmentResponse(
     BaseModel
 ):
@@ -57,8 +59,7 @@ class DepartmentResponse(
     updated_at: datetime
     location_id: str | None = None
 
-    
-    location: LocationDetails | None = None
+
 
     model_config = {
         "from_attributes": True

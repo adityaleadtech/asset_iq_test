@@ -206,9 +206,12 @@ def create_location(
 def create_location_path(
     db: Session,
     payload: LocationPathCreate,
-    current_user: dict
+    current_user: dict,
+    c_id: str | None = None
 ):
-    client_id = current_user["client_id"]
+    client_id = current_user.get("client_id")   
+    if current_user.get("role") == "ADMIN" and c_id:
+        client_id = c_id
 
     if not payload.path:
         raise HTTPException(
@@ -300,14 +303,21 @@ def get_location_dropdown(
     current_user: dict,
     parent_location_id: str | None,
     location_type: LocationType | None,
-    search: str | None
+    search: str | None,
+    client_id: str | None = None
 ):
+    # Determine the client ID to use
+    if client_id:
+        used_client_id = client_id
+    else:
+        used_client_id = current_user.get("client_id")
+
     query = (
         db.query(Location)
         .filter(
             Location.client_id
             ==
-            current_user["client_id"],
+            used_client_id,
             Location.is_active
             ==
             True
@@ -360,48 +370,90 @@ def get_location_dropdown(
 def get_location_leaf_path(
     db: Session,
     location_id: str,
-    current_user: dict
+    current_user: dict,
+    client_id: str | None = None
 ):
-    location = (
+    
+    if current_user["role"] !="ADMIN":
+        print("CALEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEED")
+        client_id = client_id or current_user.get("client_id")
+        location = (
         db.query(Location)
         .filter(
             Location.id == location_id,
-            Location.client_id
-            == current_user["client_id"],
+            Location.client_id== client_id,
             Location.is_active == True
         )
         .first()
     )
-
-    if not location:
-        raise HTTPException(
+        if not location:
+            raise HTTPException(
             status_code=404,
             detail="Location not found."
         )
 
-    path = []
+        path = []
 
-    current = location
+        current = location
 
-    while current is not None:
-        path.insert(0, {
+        while current is not None:
+            path.insert(0, {
             "id": current.id,
             "name": current.name,
             "location_type":
                 current.location_type
         })
 
-        current = current.parent
+            current = current.parent
 
-    return {
+        return {
         "leaf_id": location.id,
         "leaf_name": location.name,
         "full_path": " > ".join(
             item["name"]
             for item in path
-        ),
+            ),
         "path": path
-    }
+        }
+    if current_user["role"] =="ADMIN":
+
+        location = (
+        db.query(Location)  
+        .filter(
+            Location.id == location_id,
+            Location.is_active == True
+        )
+        .first()
+    )
+        if not location:
+            raise HTTPException(
+            status_code=404,
+            detail="Location not found."
+        )
+
+        path = []
+
+        current = location
+
+        while current is not None:
+            path.insert(0, {
+            "id": current.id,
+            "name": current.name,
+            "location_type":
+                current.location_type
+        })
+
+            current = current.parent
+
+        return {
+        "leaf_id": location.id,
+        "leaf_name": location.name,
+        "full_path": " > ".join(
+            item["name"]
+            for item in path
+            ),
+        "path": path
+        }
 
 
 
@@ -733,17 +785,19 @@ def close_location(
 
 def get_location_cards(
     db: Session,
-    current_user: dict
+    current_user: dict,
+    client_id: str | None = None
 ):
     #
     # Get only leaf locations
     #
+    client_id = client_id or current_user.get("client_id")
     leaf_locations = (
         db.query(Location)
         .filter(
             Location.client_id
             ==
-            current_user["client_id"],
+            client_id,
             Location.is_active
             ==
             True,

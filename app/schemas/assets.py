@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from decimal import Decimal
+import json
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.models.maintenance_task import MaintenanceTask
 
@@ -37,44 +38,6 @@ class AssetUpdate(BaseModel):
     assigned_to_user_id: str | None = None
     custom_fields: list[CustomField] = []
     location_id: str | None = None  # ADD THIS
-
-class AssetResponse(BaseModel):
-    id: str
-    client_id: str
-    category_id: str | None
-    type_id: str | None
-    department_id: str | None
-    assigned_to_user_id: str | None
-    name: str
-    description: str | None
-    serial_number: str | None
-    model: str | None
-    manufacturer: str | None
-    purchase_date: date | None
-    purchase_value: Decimal | None
-    asset_condition: str  # ACTIVE, MAINTENANCE, RETIRED, LOST
-    tag_state: str  # NOT_TAGGED, TAGGED, VERIFIED
-    is_active: bool
-    qr_code_url: str | None = None
-    created_image_url: str | None = None
-    latest_image_url: str | None = None
-    current_latitude: float | None = None
-    current_longitude: float | None = None
-    last_scanned_by: str | None = None
-    last_scanned_at: datetime | None = None
-    location_id: str | None = None
-    remarks: str | None = None
-    location: LocationDetails | None = None
-    custom_fields: list[CustomField] = []
-
-    created_by: str | None = None
-
-
-
-    model_config = {
-        "from_attributes": True
-    }
-
 
 
 class AssetAssignRequest(BaseModel):
@@ -262,6 +225,7 @@ class LocationPathItem(BaseModel):
 
 class LocationDetails(BaseModel):
     id: str
+   
     path: list[LocationPathItem]
 
 
@@ -283,9 +247,11 @@ class AssetBulkItem(BaseModel):
 
     created_image_url: str | None = None
     latest_image_url: str | None = None
+    client_id: str | None=None
 
 
 class AssetBulkCreate(BaseModel):
+    client_id:str | None=None
     assets: list[AssetBulkItem]
 
 from typing import Union
@@ -339,41 +305,6 @@ class PaginationMeta(BaseModel):
     has_next: bool
     has_previous: bool
 
-class AssetResponse(BaseModel):
-    id: str
-    name: str
-    description: Optional[str]
-    model: Optional[str]
-    manufacturer: Optional[str]
-    serial_number: Optional[str]
-    asset_tag: Optional[str]
-    asset_condition: str
-    tag_state: str
-    purchase_date: Optional[date]
-    purchase_cost: Optional[float]
-    warranty_expiry: Optional[date]
-    last_scanned_at: Optional[datetime]
-    created_at: datetime
-    updated_at: datetime
-    
-    # Relationships
-    category_id: Optional[str]
-    type_id: Optional[str]
-    department_id: Optional[str]
-    location_id: Optional[str]
-    assigned_to_user_id: Optional[str]
-    client_id: str
-    
-    # Nested relations (optional)
-    category: Optional['CategoryResponse']
-    type: Optional['TypeResponse']
-    department: Optional['DepartmentResponse']
-    location: Optional['LocationResponse']
-    assigned_to: Optional['UserResponse']
-
-    class Config:
-        from_attributes = True
-
 class AssetSearchResponse(BaseModel):
     items: List[AssetResponse]
     pagination: PaginationMeta
@@ -410,8 +341,6 @@ class DepartmentResponse(BaseModel):
 
 class LocationResponse(BaseModel):
     id: str
-    name: str
-    location_type: str
     code: Optional[str] = None
     address_line_1: Optional[str] = None
     address_line_2: Optional[str] = None
@@ -564,6 +493,32 @@ class MaintenanceTaskResponse(
     model_config = {
         "from_attributes": True
     }
+
+    @field_validator('photos_urls', mode='before')
+    @classmethod
+    def parse_photos_urls(cls, v):
+        """Convert JSON string to list or handle None."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            try:
+                return json.loads(v) if v else []
+            except json.JSONDecodeError:
+                return []
+        return v if isinstance(v, list) else []
+
+    @field_validator('parts_replaced', mode='before')
+    @classmethod
+    def parse_parts_replaced(cls, v):
+        """Convert JSON string to list or handle None."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            try:
+                return json.loads(v) if v else []
+            except json.JSONDecodeError:
+                return []
+        return v if isinstance(v, list) else []
 
 
 class RejectMaintenanceRequest(

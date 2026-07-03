@@ -12,7 +12,7 @@ from app.routers.location import router as location_router
 from app.routers.users import router as users_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import cloudinary
-
+from app.routers.map import router as map_router
 
 from app.routers import auth
 
@@ -49,6 +49,7 @@ app.include_router(dashboard.router)
 
 
 
+
 from app.routers import asset
 
 app.include_router(
@@ -59,6 +60,18 @@ from app.routers import manager
 
 app.include_router(
     manager.router
+)
+
+
+from app.routers.authentication import (
+    router as authentication_router
+)
+
+app.include_router(
+    authentication_router
+)
+app.include_router(
+    map_router
 )
 
 @app.get("/")

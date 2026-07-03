@@ -176,7 +176,8 @@ def validate_parent_department(
 def create_department(
     db: Session,
     department_data,
-    current_user: dict
+    current_user: dict,
+    client_id: str = None
 ):
     """
     Create a new department
@@ -191,7 +192,7 @@ def create_department(
     existing_department = (
         db.query(Department)
         .filter(
-            Department.client_id == current_user["client_id"],
+            Department.client_id == (client_id or current_user["client_id"]),
             Department.name == department_data.name,
             Department.is_active == True
         )
@@ -244,9 +245,8 @@ def create_department(
                 status_code=404,
                 detail="Location not found"
             )
-
-    # Create department
-    department = Department(
+    if not client_id:
+        department = Department(
         id=str(uuid.uuid4()),
         client_id=current_user["client_id"],
         parent_department_id=department_data.parent_department_id,
@@ -256,16 +256,15 @@ def create_department(
         manager_id=department_data.manager_id,
         location_id=department_data.location_id,
         is_active=True
-    )
+        )
+        db.add(department)
+        db.commit()
+        db.refresh(department)
 
-    db.add(department)
-    db.commit()
-    db.refresh(department)
-
-    # Return with location details
-    location_data = get_location_details(department.location)
+        # Return with location details
+        location_data = get_location_details(department.location)
     
-    return {
+        return {
         "id": department.id,
         "client_id": department.client_id,
         "parent_department_id": department.parent_department_id,
@@ -278,7 +277,45 @@ def create_department(
         "is_active": department.is_active,
         "created_at": department.created_at,
         "updated_at": department.updated_at
-    }
+        }
+        
+    else:
+        department = Department(
+        id=str(uuid.uuid4()),
+        client_id=client_id,
+        parent_department_id=department_data.parent_department_id,
+        name=department_data.name,
+        code=department_data.code,
+        description=department_data.description,
+        manager_id=department_data.manager_id,
+        location_id=department_data.location_id,
+        is_active=True
+        )
+        db.add(department)
+        db.commit()
+        db.refresh(department)
+
+        # Return with location details
+        location_data = get_location_details(department.location)
+    
+        return {
+        "id": department.id,
+        "client_id": department.client_id,
+        "parent_department_id": department.parent_department_id,
+        "name": department.name,
+        "code": department.code,
+        "description": department.description,
+        "manager_id": department.manager_id,
+        "location_id": department.location_id,
+        "location": location_data,
+        "is_active": department.is_active,
+        "created_at": department.created_at,
+        "updated_at": department.updated_at
+        }
+
+        
+
+  
 
 
 def create_department_for_client(
@@ -403,18 +440,27 @@ def create_department_for_client(
 
 def get_departments(
     db: Session,
-    current_user: dict
+    current_user: dict,
+    client_id: str = None
 ):
     """
     Get departments based on user role
     
-    ADMIN: Sees all departments across all clients
+    ADMIN: Sees all departments across all clients can pass client_id to filter by specific client
     CLIENT_ADMIN: Sees all departments for their client
     MANAGER: Sees only departments they manage
     USER: No access to departments (returns empty list)
     """
     # Platform Admin sees all departments
-    if current_user["role"] == "ADMIN":
+    if current_user["role"] == "ADMIN" and client_id:
+        departments = (
+            db.query(Department)
+            .filter(Department.is_active == True)
+            .all()
+        )
+        client_dept=[_format_department_response(dept) for dept in departments if dept.client_id == client_id]
+        return client_dept
+    if current_user["role"] == "ADMIN" and not client_id:
         departments = (
             db.query(Department)
             .filter(Department.is_active == True)

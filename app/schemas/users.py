@@ -117,9 +117,13 @@ class ManagerUpdate(BaseModel):
 
     full_name: str | None = None
 
+    email: EmailStr | None = None
+
     phone: str | None = None
 
     employee_id: str | None = None
+
+    is_active: bool | None = None
 
 
 

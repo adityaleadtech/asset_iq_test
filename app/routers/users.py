@@ -36,7 +36,9 @@ router = APIRouter(
 
 @router.post(
     "",
-    response_model=UserResponse
+    response_model=UserResponse,
+    summary="Create a new user accessed by platform admin client admin and user with create permssion",
+    description="Platform admin has to pass CLient ID as the query pararmeter,This endpoint allows platform admins, client admins, and users with the appropriate permissions to create a new user within the system. The user will be associated with the client of the current user."
 )
 def create_new_user(
     user_data: UserCreate,
@@ -46,14 +48,16 @@ def create_new_user(
             "USERS",
             "create"
         )
-    )
+    ),
+    client_id:str | None=None
 ):
    
 
-    return create_user(db, user_data, current_user)
+    return create_user(db, user_data, current_user,client_id)
 
 
 # ── Managers ──────────────────────────────────────────────────────────────────
+
 @router.get(
     "/permission-test"
 )
@@ -90,8 +94,9 @@ def create_new_manager(
 def fetch_managers(
     db: Session = Depends(get_db),
     current_user=Depends(manager_view_required),
+    client_id:str|None=None
 ):
-    return get_all_managers(db, current_user)
+    return get_all_managers(db, current_user,client_id)
 
 
 @router.get("/managers/deactivated", response_model=list[UserResponse])
@@ -139,7 +144,7 @@ def restore_existing_manager(
     return restore_manager(db, manager_id, current_user)
 
 
-@router.get("/clients/{client_id}/managers", response_model=list[UserResponse])
+"""@router.get("/clients/{client_id}/managers", response_model=list[UserResponse],summary="used by client admin , platform admin with the query parameter")
 def fetch_client_managers(
     client_id: str,
     db: Session = Depends(get_db),
@@ -147,7 +152,7 @@ def fetch_client_managers(
 ):
     return get_managers_by_client_id(db, client_id)
 
-
+"""
 # ── Users ─────────────────────────────────────────────────────────────────────
 
 
@@ -164,11 +169,13 @@ def fetch_users(
             "USERS",
             "read"
         )
-    )
+    ),
+    client_id: str | None = None
 ):
     return get_users(
         db,
-        current_user
+        current_user,
+        client_id
     )
 
 

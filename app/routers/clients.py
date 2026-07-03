@@ -27,6 +27,7 @@ from app.services.client_services import (
 
 from app.services.subscription import get_client_subscription_status
 from app.utils.auth import (
+    admin_only,
     admin_required
 )
 
@@ -81,6 +82,7 @@ def fetch_deactivated_clients(
 def restore_client(
     client_id: str,
     db: Session = Depends(get_db),
+    summary="Restore a deactivated client, accessible to platform admins",
     current_admin=Depends(admin_required)
 ):
 
@@ -101,7 +103,8 @@ def restore_client(
 
 @router.get(
     "",
-    response_model=list[ClientResponse]
+    response_model=list[ClientResponse],
+    summary="Fetch all clients, accessible to platform admins"
 )
 def fetch_all_clients(
     db: Session = Depends(get_db),
@@ -112,12 +115,13 @@ def fetch_all_clients(
 
 @router.get(
     "/{client_id}",
-    response_model=ClientResponse
+    response_model=ClientResponse,
+    summary="Fetch a client by its ID, accessible to platform admins and client admins"
 )
 def fetch_client_by_id(
     client_id: str,
     db: Session = Depends(get_db),
-    current_admin=Depends(admin_required)
+    current_admin=Depends(admin_only)
 ):
     
     client = get_client_by_id(

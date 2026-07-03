@@ -216,6 +216,30 @@ def manager_view_required(
     return current_user
 
 
+from fastapi import Depends, HTTPException
+
+from app.config.dependencies import get_current_user
+
+
+def admin_only(
+    current_user=Depends(get_current_user)
+):
+    """
+    Allows access to:
+    - Platform Admin (ADMIN)
+    - Client Admin (CLIENT_ADMIN)
+    """
+
+    if current_user["role"] not in {"ADMIN", "CLIENT_ADMIN"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Only Platform Admin or Client Admin can access this resource."
+        )
+
+    return current_user
+
+
+
 def manager_view_required(
     current_user=Depends(
         get_current_user
@@ -248,9 +272,6 @@ from app.config.dependencies import (
 )
 
 '''
-
-
-
 
 from app.utils.permissions import (
     has_permission

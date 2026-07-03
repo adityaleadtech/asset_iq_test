@@ -21,7 +21,7 @@ from app.schemas.location import (
 from app.routers.asset import (
     check_permission
 )
-from app.services.location import close_location, create_location, create_location_path, get_location_dropdown, get_location_leaf_path, migrate_location
+from app.services.location import close_location, create_location, create_location_path, get_location_cards, get_location_dropdown, get_location_leaf_path, migrate_location
 
 
 
@@ -86,12 +86,14 @@ def create_location_hierarchy(
             "LOCATION_MANAGEMENT",
             "create"
         )
-    )
+    ),
+    c_id: str | None=None
 ):
     return create_location_path(
         db,
         payload,
-        current_user
+        current_user,
+        c_id
     )
 
 
@@ -162,7 +164,8 @@ def get_location_dropdown_router(
             "LOCATION_MANAGEMENT",
             "read"
         )
-    )
+    ),
+    client_id: str | None = None
 ):
     return (
 get_location_dropdown(
@@ -170,7 +173,8 @@ get_location_dropdown(
             current_user,
             parent_location_id,
             location_type,
-            search
+            search,
+            client_id
         )
     )
 
@@ -204,13 +208,15 @@ def get_location_leaf_path_router(
             "LOCATION_MANAGEMENT",
             "read"
         )
-    )
+    ),
+    client_id:str|None =None
 ):
     return (
         get_location_leaf_path(
             db,
             location_id,
-            current_user
+            current_user,
+            client_id
         )
     )
 
@@ -319,7 +325,7 @@ INDIA > RAJASTHAN >
 JAIPUR > OFFICE 12
 """
 )
-def get_location_cards(
+def get_location_cards_router(
     db: Session = Depends(
         get_db
     ),
@@ -328,12 +334,14 @@ def get_location_cards(
             "LOCATION_MANAGEMENT",
             "read"
         )
-    )
+    ),
+    client_id: str | None = None
 ):
     return (
     get_location_cards(
             db,
-            current_user
+            current_user,
+            client_id
         )
     )
 

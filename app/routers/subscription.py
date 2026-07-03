@@ -19,6 +19,7 @@ from app.services.subscription import (
     cancel_subscription
 )
 from app.utils.auth import (
+    admin_only,
     admin_required
 )
 
@@ -51,7 +52,7 @@ def create_client_subscription(
 def fetch_client_subscription(
     client_id: str,
     db: Session = Depends(get_db),
-    current_admin=Depends(admin_required)
+    current_admin=Depends(admin_only)
 ):
     return get_client_subscription(
         db,
@@ -61,7 +62,8 @@ def fetch_client_subscription(
 
 @router.get(
     "/subscriptions/{subscription_id}",
-    response_model=SubscriptionResponse
+    response_model=SubscriptionResponse,
+    summary="Fetch a subscription by its ID, accessible to platform admins"
 )
 def fetch_subscription(
     subscription_id: str,
@@ -139,12 +141,13 @@ def cancel_existing_subscription(
 
 
 @router.get(
-    "/{client_id}/subscription-status"
+    "/{client_id}/subscription-status",
+    summary="Fetch the subscription status of a client accessed by client admins and platform admins",
 )
 def fetch_subscription_status(
     client_id: str,
     db: Session = Depends(get_db),
-    current_admin=Depends(admin_required)
+    current_admin=Depends(admin_only)
 ):
     return get_client_subscription_status(
         db,

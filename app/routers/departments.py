@@ -26,6 +26,7 @@ from app.services.department_manager import (
 
 
 from app.utils.auth import (
+    admin_only,
     department_update_required,
     department_creator_required,
     department_view_required,
@@ -53,10 +54,11 @@ def create_new_department(
     service_permission_required(
         "DEPARTMENTS",
         "create"
-    )
-)
+    ),
+    
+),client_id:str = None
 ):
-    return create_department(db, department, current_user)
+    return create_department(db, department, current_user,client_id)
 
 
 @router.get(
@@ -69,10 +71,12 @@ def fetch_departments(
     service_permission_required(
         "DEPARTMENTS",
         "read"
-    )
-)  # Changed from department_creator_required
+    ),
+    
+) ,
+client_id: str = None # Changed from department_creator_required
 ):
-    return get_departments(db, current_user)  # Pass current_user instead of client_id
+    return get_departments(db, current_user, client_id)  # Pass current_user and client_id
 
 
 # ============ ROUTES WITH CLIENT_ID PARAMETER (specific pattern) ============
@@ -102,7 +106,7 @@ def create_department_for_specific_client(
 def fetch_client_deactivated_departments(
     client_id: str,
     db: Session = Depends(get_db),
-    current_admin=Depends(admin_required)
+    current_admin=Depends(admin_only)
 ):
     return get_deactivated_departments_by_client(db, client_id)
 
