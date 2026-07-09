@@ -81,6 +81,16 @@ class MaintenanceTask(Base):
         index=True
     )
 
+    approved_at = Column(
+        DateTime,
+        nullable=True
+    )
+
+    started_at = Column(
+        DateTime,
+        nullable=True
+    )
+
     vendor_name = Column(
         String(255),
         nullable=True
@@ -99,7 +109,8 @@ class MaintenanceTask(Base):
 
     created_at = Column(
         DateTime,
-        server_default=func.now()
+        server_default=func.now(),
+        nullable=False
     )
 
     #
@@ -117,10 +128,12 @@ class MaintenanceTask(Base):
 
     raised_by_user = relationship(
         "User",
-        foreign_keys=[raised_by]
+        foreign_keys=[raised_by],
+        back_populates="raised_maintenance_tasks"
     )
 
     approved_by_user = relationship(
         "User",
-        foreign_keys=[approved_by]
+        foreign_keys=[approved_by],
+        back_populates="approved_maintenance_tasks"
     )

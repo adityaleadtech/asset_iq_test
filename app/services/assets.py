@@ -3569,6 +3569,9 @@ def get_my_assets(
 
 import json
 
+import json
+
+
 def create_maintenance_task(
     db: Session,
     asset_id: str,
@@ -3579,9 +3582,8 @@ def create_maintenance_task(
         db.query(Asset)
         .filter(
             Asset.id == asset_id,
-            Asset.client_id
-            == current_user["client_id"],
-            Asset.is_active == True
+            Asset.client_id == current_user["client_id"],
+            Asset.is_active.is_(True)
         )
         .first()
     )
@@ -3593,8 +3595,8 @@ def create_maintenance_task(
         )
 
     #
-    # USER can only raise
-    # maintenance for assigned assets
+    # USER can only raise maintenance
+    # for assigned assets
     #
     if current_user["role"] == "USER":
         if (
@@ -3617,8 +3619,7 @@ def create_maintenance_task(
     existing = (
         db.query(MaintenanceTask)
         .filter(
-            MaintenanceTask.asset_id
-            == asset.id,
+            MaintenanceTask.asset_id == asset.id,
             MaintenanceTask.status.in_([
                 "pending_approval",
                 "approved",
@@ -3640,21 +3641,15 @@ def create_maintenance_task(
 
     task = MaintenanceTask(
         asset_id=asset.id,
-    	name=asset.name,
         client_id=asset.client_id,
         raised_by=current_user["id"],
-        issue_description=
-        payload.issue_description,
+        issue_description=payload.issue_description,
         photos_urls=json.dumps(
-            payload.photos_urls
-            or []
+            payload.photos_urls or []
         ),
-        estimated_cost=
-        payload.estimated_cost,
-        is_emergency=
-        payload.is_emergency,
-        vendor_name=
-        payload.vendor_name,
+        estimated_cost=payload.estimated_cost,
+        is_emergency=payload.is_emergency,
+        vendor_name=payload.vendor_name,
         status="pending_approval"
     )
 
@@ -3662,7 +3657,42 @@ def create_maintenance_task(
     db.commit()
     db.refresh(task)
 
-    return task
+    #
+    # Convert JSON string to list
+    #
+    photos_urls = []
+
+    if task.photos_urls:
+        photos_urls = json.loads(
+            task.photos_urls
+        )
+
+    #
+    # Build response manually
+    #
+    return {
+        "id": task.id,
+        "asset_id": task.asset_id,
+        "name": asset.name,
+        "client_id": task.client_id,
+        "raised_by": task.raised_by,
+        "issue_description": task.issue_description,
+        "photos_urls": photos_urls,
+        "estimated_cost": task.estimated_cost,
+        "is_emergency": task.is_emergency,
+        "status": task.status,
+        "approved_by": task.approved_by,
+        "approved_at": task.approved_at,
+        "started_at": task.started_at,
+        "completed_at": task.completed_at,
+        "vendor_name": task.vendor_name,
+        "parts_replaced": (
+            json.loads(task.parts_replaced)
+            if task.parts_replaced
+            else []
+        ),
+        "created_at": task.created_at
+    }
 from datetime import datetime
 
 
@@ -3706,232 +3736,8 @@ def approve_maintenance(
 
     return task
 
+
 def start_maintenance(
-    db: Session,
-    maintenance_id: str,
-    current_user: dict
-
-):
-    task = (
-        db.query(MaintenanceTask)
-        .filter(
-            MaintenanceTask.id
-            == maintenance_id
-        )
-        .first()
-    )
-    print("++++++++++++++++++++++++==")
-    print(task)
-    print(maintenance_id)
-    print(current_user)
-    print("++++++++++++++++++++++++++")
-
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail=
-            "Maintenance task not found."
-        )
-
-    if (
-        task.status
-        != "approved"
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail=
-            "Maintenance request "
-            "must be approved first."
-        )
-
-    task.status = "in_progress"
-    task.started_at = datetime.now(timezone.utc)
-
-    asset = (
-        db.query(Asset)
-        .filter(
-            Asset.id
-            == task.asset_id
-        )
-        .first()
-    )
-
-    if asset:
-        asset.asset_condition = (
-            "UNDER_MAINTENANCE"
-        )
-
-    db.commit()
-    db.refresh(task)
-
-    return task
-
-
-def complete_maintenance(
-    db: Session,
-    maintenance_id: str,
-    current_user: dict
-):
-    task = (
-        db.query(MaintenanceTask)
-        .filter(
-            MaintenanceTask.id
-            == maintenance_id
-        )
-        .first()
-    )
-
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail=
-            "Maintenance task not found."
-        )
-
-    if (
-        task.status
-        != "in_progress"
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail=
-            "Maintenance task "
-            "is not in progress."
-        )
-
-    task.status = "completed"
-    task.completed_at = datetime.now(timezone.utc)
-
-    asset = (
-        db.query(Asset)
-        .filter(
-            Asset.id
-            == task.asset_id
-        )
-        .first()
-    )
-
-    if asset:
-        asset.asset_condition = "ACTIVE"
-
-    db.commit()
-    db.refresh(task)
-
-    return task
-
-
-def approve_maintenance(
-    db: Session,
-    maintenance_id: str,
-    current_user: dict
-):
-    task = (
-        db.query(
-            MaintenanceTask
-        )
-        .filter(
-            MaintenanceTask.id
-            ==
-            maintenance_id
-        )
-        .first()
-    )
-
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail=
-            "Maintenance task not found."
-        )
-
-    if (
-        task.status
-        !=
-        "pending_approval"
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail=
-            "Task cannot be approved."
-        )
-
-    task.status = "approved"
-    task.approved_by = current_user["id"]
-
-    db.commit()
-    db.refresh(task)
-
-    return task
-
-
-
-def complete_maintenance(
-    db: Session,
-    maintenance_id: str
-):
-    task = (
-        db.query(
-            MaintenanceTask
-        )
-        .filter(
-            MaintenanceTask.id
-            ==
-            maintenance_id
-        )
-        .first()
-    )
-
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail=
-            "Maintenance task not found."
-        )
-
-    if (
-        task.status
-        !=
-        "in_progress"
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail=
-            "Maintenance is not in progress."
-        )
-
-    task.status ="completed"
-
-    task.completed_at = (
-        datetime.utcnow()
-    )
-
-    asset = (
-        db.query(Asset)
-        .filter(
-            Asset.id
-            ==
-            task.asset_id
-        )
-        .first()
-    )
-
-    if asset:
-        asset.asset_condition = (
-            "ACTIVE"
-        )
-
-    db.commit()
-    db.refresh(task)
-
-    return task
-
-
-
-
-from datetime import datetime
-
-
-def complete_maintenance(
     db: Session,
     maintenance_id: str,
     current_user: dict
@@ -3951,8 +3757,12 @@ def complete_maintenance(
             detail="Maintenance task not found."
         )
 
+    #
+    # Client isolation
+    #
     if (
-        task.client_id
+        current_user["role"] != "ADMIN"
+        and task.client_id
         != current_user["client_id"]
     ):
         raise HTTPException(
@@ -3960,42 +3770,306 @@ def complete_maintenance(
             detail="Access denied."
         )
 
-    if (
-        task.status
-        != "in_progress"
-    ):
+    if task.status != "approved":
         raise HTTPException(
             status_code=400,
             detail=(
-                "Maintenance task "
-                "is not in progress."
+                "Only approved maintenance "
+                "tasks can be started."
             )
         )
-
-    task.status = "completed"
-    task.completed_at = (
-        datetime.utcnow()
-    )
 
     asset = (
         db.query(Asset)
         .filter(
-            Asset.id
-            == task.asset_id
+            Asset.id == task.asset_id
         )
         .first()
     )
 
-    if asset:
-        asset.asset_condition = (
-            "ACTIVE"
+    if not asset:
+        raise HTTPException(
+            status_code=404,
+            detail="Asset not found."
         )
+
+    task.status = "in_progress"
+
+    task.started_at = datetime.now(
+        timezone.utc
+    )
+
+    asset.asset_condition = (
+        "UNDER_MAINTENANCE"
+    )
 
     db.commit()
     db.refresh(task)
 
-    return task
+    return serialize_maintenance_task(
+        task,
+        asset
+    )
 
+
+#
+# ============================================================
+# COMPLETE MAINTENANCE
+# ============================================================
+#
+
+def complete_maintenance(
+    db: Session,
+    maintenance_id: str,
+    current_user: dict
+):
+    task = (
+        db.query(MaintenanceTask)
+        .filter(
+            MaintenanceTask.id == maintenance_id
+        )
+        .first()
+    )
+
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail="Maintenance task not found."
+        )
+
+    if (
+        current_user["role"] != "ADMIN"
+        and task.client_id
+        != current_user["client_id"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied."
+        )
+
+    if task.status != "in_progress":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only in-progress maintenance "
+                "tasks can be completed."
+            )
+        )
+
+    asset = (
+        db.query(Asset)
+        .filter(
+            Asset.id == task.asset_id
+        )
+        .first()
+    )
+
+    if not asset:
+        raise HTTPException(
+            status_code=404,
+            detail="Asset not found."
+        )
+
+    task.status = "completed"
+
+    task.completed_at = datetime.now(
+        timezone.utc
+    )
+
+    asset.asset_condition = "ACTIVE"
+
+    db.commit()
+    db.refresh(task)
+    db.refresh(asset)
+
+    response = serialize_maintenance_task(
+        task,
+        asset
+    )
+
+    print(
+        "COMPLETE MAINTENANCE RESPONSE:",
+        response
+    )
+
+    print(
+        "RESPONSE TYPE:",
+        type(response)
+    )
+
+    return response
+import json
+
+from datetime import datetime, timezone
+
+
+def approve_maintenance(
+    db: Session,
+    maintenance_id: str,
+    current_user: dict
+):
+    task = (
+        db.query(MaintenanceTask)
+        .filter(
+            MaintenanceTask.id == maintenance_id
+        )
+        .first()
+    )
+
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail="Maintenance task not found."
+        )
+
+    if (
+        current_user["role"] != "ADMIN"
+        and task.client_id
+        != current_user["client_id"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied."
+        )
+
+    if task.status != "pending_approval":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only pending maintenance "
+                "requests can be approved."
+            )
+        )
+
+    task.status = "approved"
+    task.approved_by = current_user["id"]
+    task.approved_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(task)
+
+    asset = (
+        db.query(Asset)
+        .filter(
+            Asset.id == task.asset_id
+        )
+        .first()
+    )
+
+    return {
+        "id": task.id,
+        "asset_id": task.asset_id,
+        "name": asset.name,
+        "client_id": task.client_id,
+        "raised_by": task.raised_by,
+        "issue_description": task.issue_description,
+        "photos_urls": (
+            json.loads(task.photos_urls)
+            if task.photos_urls
+            else []
+        ),
+        "estimated_cost": task.estimated_cost,
+        "is_emergency": task.is_emergency,
+        "status": task.status,
+        "approved_by": task.approved_by,
+        "approved_at": task.approved_at,
+        "started_at": task.started_at,
+        "completed_at": task.completed_at,
+        "vendor_name": task.vendor_name,
+        "parts_replaced": (
+            json.loads(task.parts_replaced)
+            if task.parts_replaced
+            else []
+        ),
+        "created_at": task.created_at
+    }
+
+
+
+
+
+from datetime import datetime
+
+def complete_maintenance(
+    db: Session,
+    maintenance_id: str,
+    current_user: dict
+):
+    task = (
+        db.query(MaintenanceTask)
+        .filter(
+            MaintenanceTask.id == maintenance_id
+        )
+        .first()
+    )
+
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail="Maintenance task not found."
+        )
+
+    if (
+        current_user["role"] != "ADMIN"
+        and task.client_id
+        != current_user["client_id"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied."
+        )
+
+    if task.status != "in_progress":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only in-progress maintenance "
+                "tasks can be completed."
+            )
+        )
+
+    asset = (
+        db.query(Asset)
+        .filter(
+            Asset.id == task.asset_id
+        )
+        .first()
+    )
+
+    if not asset:
+        raise HTTPException(
+            status_code=404,
+            detail="Asset not found."
+        )
+
+    task.status = "completed"
+
+    task.completed_at = datetime.now(
+        timezone.utc
+    )
+
+    asset.asset_condition = "ACTIVE"
+
+    db.commit()
+    db.refresh(task)
+    db.refresh(asset)
+
+    response = serialize_maintenance_task(
+        task,
+        asset
+    )
+
+    print(
+        "COMPLETE MAINTENANCE RESPONSE:",
+        response
+    )
+
+    print(
+        "RESPONSE TYPE:",
+        type(response)
+    )
+
+    return response
 
 
 def reject_maintenance(
@@ -4007,8 +4081,7 @@ def reject_maintenance(
     task = (
         db.query(MaintenanceTask)
         .filter(
-            MaintenanceTask.id
-            == maintenance_id
+            MaintenanceTask.id == maintenance_id
         )
         .first()
     )
@@ -4019,8 +4092,12 @@ def reject_maintenance(
             detail="Maintenance task not found."
         )
 
+    #
+    # Client isolation
+    #
     if (
-        task.client_id
+        current_user["role"] != "ADMIN"
+        and task.client_id
         != current_user["client_id"]
     ):
         raise HTTPException(
@@ -4028,20 +4105,40 @@ def reject_maintenance(
             detail="Access denied."
         )
 
-    if (
-        task.status
-        != "pending_approval"
-    ):
+    #
+    # Only pending requests can be rejected
+    #
+    if task.status != "pending_approval":
         raise HTTPException(
             status_code=400,
             detail=(
-                "Only pending "
-                "maintenance requests "
-                "can be rejected."
+                "Only pending maintenance "
+                "requests can be rejected."
             )
         )
 
+    #
+    # Get asset for response name
+    #
+    asset = (
+        db.query(Asset)
+        .filter(
+            Asset.id == task.asset_id
+        )
+        .first()
+    )
+
+    if not asset:
+        raise HTTPException(
+            status_code=404,
+            detail="Asset not found."
+        )
+
+    #
+    # Reject maintenance
+    #
     task.status = "rejected"
+
     task.rejection_reason = (
         payload.rejection_reason
     )
@@ -4049,9 +4146,12 @@ def reject_maintenance(
     db.commit()
     db.refresh(task)
 
-    return task
+    return serialize_maintenance_task(
+        task,
+        asset
+    )
 
-
+import json
 
 
 def get_asset_maintenance(
@@ -4059,45 +4159,100 @@ def get_asset_maintenance(
     asset_id: str,
     current_user: dict
 ):
-    return (
-        db.query(MaintenanceTask)
-        .filter(
-            MaintenanceTask.asset_id
-            == asset_id,
-            MaintenanceTask.client_id
-            ==
-            current_user["client_id"]
+    query = (
+        db.query(
+            MaintenanceTask,
+            Asset.name.label("name")
         )
+        .join(
+            Asset,
+            Asset.id == MaintenanceTask.asset_id
+        )
+        .filter(
+            MaintenanceTask.asset_id == asset_id
+        )
+    )
+
+    if current_user["role"] != "ADMIN":
+        query = query.filter(
+            MaintenanceTask.client_id
+            == current_user["client_id"]
+        )
+
+    results = (
+        query
         .order_by(
-            MaintenanceTask.created_at
-            .desc()
+            MaintenanceTask.created_at.desc()
         )
         .all()
     )
 
+    response = []
+
+    for task, name in results:
+        response.append({
+            "id": task.id,
+            "asset_id": task.asset_id,
+            "name": name,
+            "client_id": task.client_id,
+            "raised_by": task.raised_by,
+            "issue_description": task.issue_description,
+            "photos_urls": (
+                json.loads(task.photos_urls)
+                if task.photos_urls
+                else []
+            ),
+            "estimated_cost": task.estimated_cost,
+            "is_emergency": task.is_emergency,
+            "status": task.status,
+            "approved_by": task.approved_by,
+            "approved_at": task.approved_at,
+            "started_at": task.started_at,
+            "completed_at": task.completed_at,
+            "vendor_name": task.vendor_name,
+            "parts_replaced": (
+                json.loads(task.parts_replaced)
+                if task.parts_replaced
+                else []
+            ),
+            "created_at": task.created_at
+        })
+
+    return response
 
 
-def get_asset_maintenance(
-    db: Session,
-    asset_id: str,
-    current_user: dict
+
+def serialize_maintenance_task(
+    task: MaintenanceTask,
+    asset: Asset
 ):
-    return (
-        db.query(MaintenanceTask)
-        .filter(
-            MaintenanceTask.asset_id
-            == asset_id,
-            MaintenanceTask.client_id
-            ==
-            current_user["client_id"]
-        )
-        .order_by(
-            MaintenanceTask.created_at
-            .desc()
-        )
-        .all()
-    )
-
+    return {
+        "id": task.id,
+        "asset_id": task.asset_id,
+        "name": asset.name,
+        "client_id": task.client_id,
+        "raised_by": task.raised_by,
+        "issue_description": task.issue_description,
+        "photos_urls": (
+            json.loads(task.photos_urls)
+            if task.photos_urls
+            else []
+        ),
+        "estimated_cost": task.estimated_cost,
+        "is_emergency": task.is_emergency,
+        "status": task.status,
+        "approved_by": task.approved_by,
+        "approved_at": task.approved_at,
+        "started_at": task.started_at,
+        "completed_at": task.completed_at,
+        "vendor_name": task.vendor_name,
+        "parts_replaced": (
+            json.loads(task.parts_replaced)
+            if task.parts_replaced
+            else []
+        ),
+        "created_at": task.created_at
+    }
 
 def get_maintenance_tasks(
     db: Session,
