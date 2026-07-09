@@ -1,9 +1,37 @@
+import json
+
 from datetime import date, datetime
-from typing import List, Optional, Literal
-from fastapi import APIRouter, Depends, status, Query, HTTPException
-from sqlalchemy import or_, and_, asc, desc, false
-from sqlalchemy.orm import Session, joinedload
-from pydantic import BaseModel, Field
+from typing import List, Optional, Literal, Annotated
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    status,
+    Query,
+    HTTPException,
+    UploadFile,
+    File,
+    Form
+	
+)
+
+from sqlalchemy import (
+    or_,
+    and_,
+    asc,
+    desc,
+    false
+)
+
+from sqlalchemy.orm import (
+    Session,
+    joinedload
+)
+
+from pydantic import (
+    BaseModel,
+    Field
+)
 
 from app.config.dependencies import get_db
 from app.models.asset import Asset
@@ -218,33 +246,139 @@ def fetch_asset_tagging_stats(
 @router.post(
     "/bulk",
     status_code=status.HTTP_201_CREATED,
-    summary="Bulk Create Assets (Accessible to Client Admins, ADMIN and Platform Admins)",
-    description="Bulk create assets. The assets will be associated with the client of the current user. Platform admin can pass client_id in the payload to create assets for specific client"
+    summary="Bulk Create Assets",
+    description="""
+Bulk create multiple assets in a single request.
+
+The API automatically determines the target client based on the
+authenticated user's role.
+
+ADMIN / Platform Admin:
+- Must provide client_id in the request body.
+- Assets are created for the specified client.
+
+CLIENT_ADMIN:
+- client_id is automatically read from the JWT token.
+- Any client_id provided in the request body is ignored.
+
+MANAGER or Custom Role:
+- Must have ASSET_MANAGEMENT.create permission.
+- client_id is automatically read from the JWT token.
+
+All assets in one bulk request are created for the same client.
+
+Example ADMIN request:
+
+{
+    "client_id": "CLIENT_UUID",
+    "assets": [
+        {
+            "category_id": "CATEGORY_UUID",
+            "type_id": "TYPE_UUID",
+            "name": "Dell Laptop 1",
+            "department_id": "DEPARTMENT_UUID",
+            "location_id": "LOCATION_UUID",
+            "serial_number": "DELL-001",
+            "model": "Latitude 5420",
+            "manufacturer": "Dell",
+            "purchase_date": "2026-07-04",
+            "purchase_value": 65000,
+            "custom_fields": []
+        },
+        {
+            "category_id": "CATEGORY_UUID",
+            "type_id": "TYPE_UUID",
+            "name": "Dell Laptop 2",
+            "serial_number": "DELL-002",
+            "custom_fields": []
+        }
+    ]
+}
+
+For CLIENT_ADMIN, MANAGER, or a custom role:
+
+{
+    "assets": [
+        {
+            "category_id": "CATEGORY_UUID",
+            "type_id": "TYPE_UUID",
+            "name": "Dell Laptop 1",
+            "custom_fields": []
+        }
+    ]
+}
+"""
 )
 def create_assets_bulk(
     payload: AssetBulkCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(check_permission("ASSET_MANAGEMENT", "create")),
-    client_id: str | None = None
+    current_user=Depends(
+        check_permission(
+            "ASSET_MANAGEMENT",
+            "create"
+        )
+    )
 ):
-    print("_________________________________"+str(current_user))
-    if(current_user["role"]=="ADMIN"  and not client_id):
-        raise HTTPException(status_code=400, detail="client_id is required for platform admin")
-    if(current_user["role"]=="ADMIN"  and client_id):
-        payload.client_id=client_id
-        return bulk_create_assets(
-        db=db,
-        payload=payload,
-        client_id=payload.client_id,
-        created_by=current_user["id"]
+
+    # =====================================
+    # Resolve Current User Role
+    # =====================================
+
+    role = str(
+        current_user.get(
+            "role",
+            ""
         )
+    ).upper()
+
+    # =====================================
+    # Platform Admin
+    # =====================================
+
+    if role == "ADMIN":
+
+        if not payload.client_id:
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "client_id is required "
+                    "for Platform Admin"
+                )
+            )
+
+        client_id = payload.client_id
+
+    # =====================================
+    # Client Users
+    # =====================================
+
     else:
-        return bulk_create_assets(
+
+        client_id = current_user.get(
+            "client_id"
+        )
+
+        if not client_id:
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Authenticated user is not "
+                    "associated with a client"
+                )
+            )
+
+    # =====================================
+    # Bulk Create Assets
+    # =====================================
+
+    return bulk_create_assets(
         db=db,
         payload=payload,
-        client_id=current_user["client_id"],
+        client_id=client_id,
         created_by=current_user["id"]
-        )
+    )
 
 # ==================== MY ASSETS (MUST COME BEFORE /{asset_id}) ====================
 #to fix Platform admin to see specific user's asset
@@ -658,7 +792,7 @@ def fetch_asset_location(
 def fetch_verification_data(
     asset_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user=Depends(check_permission("ASSET_MANAGEMENT", "read"))
 ):
     return get_asset_verification_data(db, asset_id, current_user)
 
@@ -689,19 +823,94 @@ def fetch_assets(
 ):
     return asset_service.get_assets(db, current_user)
 
+
+
+
+
 @router.post(
     "",
     response_model=AssetResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new asset"
+    summary="Create a new asset",
+    description="""
+Create an asset with an image.
+
+Request type:
+
+multipart/form-data
+
+Fields:
+
+asset_data:
+JSON string containing asset information.
+
+image_file:
+Asset image file.
+"""
 )
 def create_new_asset(
-    asset_data: AssetCreate,
+    asset_data: str = Form(...),
+    image_file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user=Depends(check_permission("ASSET_MANAGEMENT", "create"))
+    current_user=Depends(
+        check_permission(
+            "ASSET_MANAGEMENT",
+            "create"
+        )
+    )
 ):
-    return asset_service.create_asset(db, asset_data, current_user)
 
+    # =====================================
+    # Parse JSON
+    # =====================================
+
+    try:
+
+        parsed_asset_data = json.loads(
+            asset_data
+        )
+
+    except json.JSONDecodeError as error:
+
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": (
+                    "asset_data must be valid JSON"
+                ),
+                "error": str(error)
+            }
+        )
+
+    # =====================================
+    # Validate Schema
+    # =====================================
+
+    try:
+
+        validated_asset_data = (
+            AssetCreate(
+                **parsed_asset_data
+            )
+        )
+
+    except ValidationError as error:
+
+        raise HTTPException(
+            status_code=422,
+            detail=error.errors()
+        )
+
+    # =====================================
+    # Create Asset
+    # =====================================
+
+    return asset_service.create_asset(
+        db=db,
+        asset_data=validated_asset_data,
+        current_user=current_user,
+        image_file=image_file
+    )
 @router.get(
     "/{asset_id}",  # This catches ANYTHING - must be ABSOLUTELY LAST!
     response_model=AssetResponse,

@@ -19,6 +19,7 @@ from app.models.location import Location
 from app.schemas.assets import AssetBulkCreate, AssetVerificationRequest, CreateMaintenanceRequest, MarkLostRequest, RejectMaintenanceRequest
 from app.utils.qr import generate_asset_qr
 from datetime import datetime, timezone
+import cloudinary.uploader
 
 
 
@@ -79,22 +80,33 @@ def get_location_details(location):
 def create_asset(
     db: Session,
     asset_data,
-    current_user
+    current_user,
+    image_file
 ):
     """
     Create a new asset.
-    Supports:
-    - Global and client-specific categories/types
-    - Optional assigned user
-    - Optional location
-    - created_image_url
-    - latest_image_url
-    - custom_fields
+
+    Flow:
+    - Resolve client
+    - Validate subscription
+    - Validate asset limit
+    - Validate serial number
+    - Validate category and type
+    - Validate optional department
+    - Validate optional assigned user
+    - Validate optional location
+    - Process custom fields
+    - Generate asset ID
+    - Upload asset image to Cloudinary
+    - Create asset
+    - Generate QR code
+    - Save QR URL
     """
 
     # =====================================
     # Resolve Client ID
     # =====================================
+
     if current_user["role"] == "ADMIN":
 
         if (
@@ -112,11 +124,13 @@ def create_asset(
         client_id = asset_data.client_id
 
     else:
+
         client_id = current_user["client_id"]
 
     # =====================================
     # Validate Subscription
     # =====================================
+
     subscription = (
         db.query(Subscription)
         .filter(
@@ -127,6 +141,7 @@ def create_asset(
     )
 
     if not subscription:
+
         raise HTTPException(
             status_code=400,
             detail="No active subscription found"
@@ -135,6 +150,7 @@ def create_asset(
     # =====================================
     # Check Asset Limit
     # =====================================
+
     asset_count = (
         db.query(Asset)
         .filter(
@@ -145,6 +161,7 @@ def create_asset(
     )
 
     if asset_count >= subscription.max_assets:
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -157,6 +174,7 @@ def create_asset(
     # =====================================
     # Serial Number Validation
     # =====================================
+
     if asset_data.serial_number:
 
         existing_asset = (
@@ -171,6 +189,7 @@ def create_asset(
         )
 
         if existing_asset:
+
             raise HTTPException(
                 status_code=400,
                 detail="Serial number already exists"
@@ -179,22 +198,30 @@ def create_asset(
     # =====================================
     # Category Validation
     # =====================================
+
     category = (
         db.query(AssetCategory)
         .filter(
             AssetCategory.id
             == asset_data.category_id,
-            AssetCategory.is_active == True,
+
+            AssetCategory.is_active
+            == True,
+
             or_(
                 AssetCategory.client_id
                 == client_id,
-                AssetCategory.client_id.is_(None)
+
+                AssetCategory.client_id.is_(
+                    None
+                )
             )
         )
         .first()
     )
 
     if not category:
+
         raise HTTPException(
             status_code=404,
             detail="Asset category not found"
@@ -203,31 +230,41 @@ def create_asset(
     # =====================================
     # Type Validation
     # =====================================
+
     asset_type = (
         db.query(AssetType)
         .filter(
             AssetType.id
             == asset_data.type_id,
-            AssetType.is_active == True,
+
+            AssetType.is_active
+            == True,
+
             or_(
                 AssetType.client_id
                 == client_id,
-                AssetType.client_id.is_(None)
+
+                AssetType.client_id.is_(
+                    None
+                )
             )
         )
         .first()
     )
 
     if not asset_type:
+
         raise HTTPException(
             status_code=404,
             detail="Asset type not found"
         )
 
     # =====================================
-    # Validate Type Belongs to Category
+    # Validate Type Belongs To Category
     # =====================================
+
     if asset_type.category_id != category.id:
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -239,27 +276,39 @@ def create_asset(
     # =====================================
     # Department Validation
     # =====================================
-    department = (
-        db.query(Department)
-        .filter(
-            Department.id
-            == asset_data.department_id,
-            Department.client_id
-            == client_id,
-            Department.is_active == True
-        )
-        .first()
-    )
 
-    if not department:
-        raise HTTPException(
-            status_code=404,
-            detail="Department not found"
+    department_id = None
+
+    if asset_data.department_id:
+
+        department = (
+            db.query(Department)
+            .filter(
+                Department.id
+                == asset_data.department_id,
+
+                Department.client_id
+                == client_id,
+
+                Department.is_active
+                == True
+            )
+            .first()
         )
+
+        if not department:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Department not found"
+            )
+
+        department_id = department.id
 
     # =====================================
     # Assigned User Validation
     # =====================================
+
     assigned_user_id = None
 
     if asset_data.assigned_to_user_id:
@@ -269,14 +318,18 @@ def create_asset(
             .filter(
                 User.id
                 == asset_data.assigned_to_user_id,
+
                 User.client_id
                 == client_id,
-                User.is_active == True
+
+                User.is_active
+                == True
             )
             .first()
         )
 
         if not assigned_user:
+
             raise HTTPException(
                 status_code=404,
                 detail="Assigned user not found"
@@ -287,25 +340,28 @@ def create_asset(
     # =====================================
     # Location Validation
     # =====================================
+
     location_id = None
 
-    if (
-        hasattr(asset_data, "location_id")
-        and asset_data.location_id
-    ):
+    if asset_data.location_id:
+
         location = (
             db.query(Location)
             .filter(
                 Location.id
                 == asset_data.location_id,
+
                 Location.client_id
                 == client_id,
-                Location.is_active == True
+
+                Location.is_active
+                == True
             )
             .first()
         )
 
         if not location:
+
             raise HTTPException(
                 status_code=404,
                 detail="Location not found"
@@ -316,12 +372,11 @@ def create_asset(
     # =====================================
     # Custom Fields
     # =====================================
+
     custom_fields = []
 
-    if (
-        hasattr(asset_data, "custom_fields")
-        and asset_data.custom_fields
-    ):
+    if asset_data.custom_fields:
+
         custom_fields = [
             (
                 field.model_dump()
@@ -335,93 +390,325 @@ def create_asset(
         ]
 
     # =====================================
-    # Images
+    # Generate Asset ID
     # =====================================
-    created_image_url = (
-        asset_data.created_image_url
-        if hasattr(
-            asset_data,
-            "created_image_url"
-        )
-        else None
+
+    asset_id = str(
+        uuid.uuid4()
     )
 
-    latest_image_url = (
-        asset_data.latest_image_url
-        if (
-            hasattr(
-                asset_data,
-                "latest_image_url"
-            )
-            and asset_data.latest_image_url
-        )
-        else created_image_url
+    print(
+        "GENERATED ASSET ID:",
+        asset_id
     )
+
+    # =====================================
+    # Upload Asset Image
+    # =====================================
+
+    created_image_url = None
+    latest_image_url = None
+
+    if image_file:
+
+        try:
+
+            print(
+                "UPLOADING ASSET IMAGE"
+            )
+
+            print(
+                "FILE NAME:",
+                image_file.filename
+            )
+
+            upload_result = (
+                cloudinary.uploader.upload(
+                    image_file.file,
+                    folder=(
+                        f"assetiq/"
+                        f"{client_id}/"
+                        f"assets"
+                    ),
+                    resource_type="image"
+                )
+            )
+
+            created_image_url = (
+                upload_result.get(
+                    "secure_url"
+                )
+            )
+
+            latest_image_url = (
+                created_image_url
+            )
+
+            if not created_image_url:
+
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "Cloudinary did not return "
+                        "an image URL"
+                    )
+                )
+
+            print(
+                "ASSET IMAGE UPLOADED"
+            )
+
+            print(
+                "IMAGE URL:",
+                created_image_url
+            )
+
+        except HTTPException:
+
+            raise
+
+        except Exception as error:
+
+            print(
+                "ASSET IMAGE UPLOAD FAILED"
+            )
+
+            print(
+                "ERROR TYPE:",
+                type(error).__name__
+            )
+
+            print(
+                "ERROR MESSAGE:",
+                str(error)
+            )
+
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Asset image upload failed: "
+                    f"{str(error)}"
+                )
+            )
 
     # =====================================
     # Create Asset
     # =====================================
+
     asset = Asset(
-        id=str(uuid.uuid4()),
+        id=asset_id,
 
         client_id=client_id,
-        category_id=asset_data.category_id,
-        type_id=asset_data.type_id,
-        department_id=asset_data.department_id,
-        assigned_to_user_id=assigned_user_id,
-        location_id=location_id,
 
-        name=asset_data.name,
-        description=asset_data.description,
-        serial_number=asset_data.serial_number,
-        model=asset_data.model,
-        manufacturer=asset_data.manufacturer,
-        purchase_date=asset_data.purchase_date,
-        purchase_value=asset_data.purchase_value,
+        category_id=(
+            asset_data.category_id
+        ),
+
+        type_id=(
+            asset_data.type_id
+        ),
+
+        department_id=(
+            department_id
+        ),
+
+        assigned_to_user_id=(
+            assigned_user_id
+        ),
+
+        location_id=(
+            location_id
+        ),
+
+        name=(
+            asset_data.name
+        ),
+
+        description=(
+            asset_data.description
+        ),
+
+        serial_number=(
+            asset_data.serial_number
+        ),
+
+        model=(
+            asset_data.model
+        ),
+
+        manufacturer=(
+            asset_data.manufacturer
+        ),
+
+        purchase_date=(
+            asset_data.purchase_date
+        ),
+
+        purchase_value=(
+            asset_data.purchase_value
+        ),
 
         asset_condition="ACTIVE",
+
         tag_state="NOT_TAGGED",
 
         current_latitude=None,
+
         current_longitude=None,
+
         last_scanned_by=None,
+
         last_scanned_at=None,
 
         qr_code_url=None,
 
-        created_image_url=created_image_url,
-        latest_image_url=latest_image_url,
+        created_image_url=(
+            created_image_url
+        ),
+
+        latest_image_url=(
+            latest_image_url
+        ),
 
         remarks=None,
 
-        custom_fields=custom_fields,
+        custom_fields=(
+            custom_fields
+        ),
 
-        created_by=current_user["id"],
+        created_by=(
+            current_user["id"]
+        ),
+
         is_active=True
     )
 
     # =====================================
     # Save Asset
     # =====================================
-    db.add(asset)
-    db.commit()
-    db.refresh(asset)
+
+    try:
+
+        db.add(
+            asset
+        )
+
+        db.commit()
+
+        db.refresh(
+            asset
+        )
+
+        print(
+            "ASSET CREATED SUCCESSFULLY"
+        )
+
+        print(
+            "ASSET ID:",
+            asset.id
+        )
+
+        print(
+            "CREATED IMAGE URL:",
+            asset.created_image_url
+        )
+
+        print(
+            "LATEST IMAGE URL:",
+            asset.latest_image_url
+        )
+
+    except Exception as error:
+
+        db.rollback()
+
+        print(
+            "ASSET DATABASE SAVE FAILED"
+        )
+
+        print(
+            "ERROR TYPE:",
+            type(error).__name__
+        )
+
+        print(
+            "ERROR MESSAGE:",
+            str(error)
+        )
+
+        raise
 
     # =====================================
     # Generate QR Code
     # =====================================
+
     try:
-        qr_url = generate_asset_qr(asset.id)
+
+        print(
+            "GENERATING QR CODE FOR ASSET"
+        )
+
+        print(
+            "ASSET ID:",
+            asset.id
+        )
+
+        qr_url = generate_asset_qr(
+            asset.id
+        )
+
+        print(
+            "QR URL GENERATED:"
+        )
+
+        print(
+            qr_url
+        )
+
+        # =====================================
+        # Save QR URL
+        # =====================================
 
         asset.qr_code_url = qr_url
 
         db.commit()
-        db.refresh(asset)
 
-    except Exception as e:
-        print(
-            f"QR generation failed: {e}"
+        db.refresh(
+            asset
         )
+
+        print(
+            "QR URL SAVED IN DATABASE"
+        )
+
+        print(
+            "QR URL:",
+            asset.qr_code_url
+        )
+
+    except Exception as error:
+
+        db.rollback()
+
+        print(
+            "QR GENERATION OR SAVE FAILED"
+        )
+
+        print(
+            "ERROR TYPE:",
+            type(error).__name__
+        )
+
+        print(
+            "ERROR MESSAGE:",
+            str(error)
+        )
+
+        raise
+
+    # =====================================
+    # Return Asset
+    # =====================================
 
     return asset
 
@@ -1775,193 +2062,495 @@ def bulk_create_assets(
     client_id: str,
     created_by: str
 ):
+    """
+    Bulk create assets for a single client.
+
+    Supports:
+    - Global and client-specific categories
+    - Global and client-specific asset types
+    - Optional department
+    - Optional location
+    - Optional assigned user
+    - Serial number validation
+    - Subscription asset limit validation
+    - Custom fields
+    - QR code generation
+    - Partial success with row-level errors
+    """
+
     created_count = 0
     errors = []
 
-    if(payload.client_id and client_id):
-        admin_client = db.query(User).filter(User.client_id == client_id, User.role=="CLIENT_ADMIN").first()
-        for index, item in enumerate(payload.assets):
-            try:
-                category = (
-                    db.query(AssetCategory)
+    # =====================================
+    # Validate Client
+    # =====================================
+
+    client = (
+        db.query(Client)
+        .filter(
+            Client.id == client_id,
+            Client.is_active == True
+        )
+        .first()
+    )
+
+    if not client:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Client not found"
+        )
+
+    # =====================================
+    # Validate Subscription
+    # =====================================
+
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.client_id == client_id,
+            Subscription.status == "ACTIVE"
+        )
+        .first()
+    )
+
+    if not subscription:
+
+        raise HTTPException(
+            status_code=400,
+            detail="No active subscription found"
+        )
+
+    # =====================================
+    # Current Asset Count
+    # =====================================
+
+    current_asset_count = (
+        db.query(Asset)
+        .filter(
+            Asset.client_id == client_id,
+            Asset.is_active == True
+        )
+        .count()
+    )
+
+    # =====================================
+    # Process Assets
+    # =====================================
+
+    for index, item in enumerate(
+        payload.assets
+    ):
+
+        try:
+
+            # =====================================
+            # Check Subscription Asset Limit
+            # =====================================
+
+            if (
+                current_asset_count
+                + created_count
+                >= subscription.max_assets
+            ):
+
+                raise Exception(
+                    f"Asset limit reached. "
+                    f"Maximum allowed: "
+                    f"{subscription.max_assets}"
+                )
+
+            # =====================================
+            # Validate Serial Number
+            # =====================================
+
+            if item.serial_number:
+
+                existing_asset = (
+                    db.query(Asset)
                     .filter(
-                        AssetCategory.client_id == client_id,
-                        AssetCategory.id == item.category
+                        Asset.client_id == client_id,
+                        Asset.serial_number
+                        == item.serial_number,
+                        Asset.is_active == True
                     )
                     .first()
                 )
 
-                if not category:
+                if existing_asset:
+
                     raise Exception(
-                        f"Category '{item.category}' not found."
+                        f"Serial number "
+                        f"'{item.serial_number}' "
+                        f"already exists"
                     )
 
-                asset_type = (
-                    db.query(AssetType)
-                    .filter(
-                        AssetType.client_id == client_id,
-                        AssetType.id == item.type
-                    )
-                    .first()
+            # =====================================
+            # Validate Duplicate Serial In Payload
+            # =====================================
+
+            if item.serial_number:
+
+                duplicate_serial = any(
+                    asset.serial_number
+                    == item.serial_number
+                    for asset in payload.assets[:index]
+                    if asset.serial_number
                 )
 
-                if not asset_type:
+                if duplicate_serial:
+
                     raise Exception(
-                        f"Type '{item.type}' not found."
+                        f"Duplicate serial number "
+                        f"'{item.serial_number}' "
+                        f"in bulk request"
                     )
 
-                department = None
+            # =====================================
+            # Category Validation
+            # =====================================
 
-                if item.department:
-                    department = (
-                        db.query(Department)
-                        .filter(
-                            Department.client_id == client_id,
-                            Department.name == item.department
-                        )
-                        .first()
-                    )
-
-                location = None
-
-                if item.location:
-                    location = (
-                        db.query(Location)
-                        .filter(
-                            Location.client_id == client_id,
-                            Location.name == item.location
-                        )
-                        .first()
-                    )
-
-                asset = Asset(
-                    client_id=client_id,
-                    category_id=category.id,
-                    type_id=asset_type.id,
-                    department_id=department.id if department else None,
-                    location_id=location.id if location else None,
-
-                    name=item.name,
-                    description=item.description,
-                    serial_number=item.serial_number,
-                    model=item.model,
-                    manufacturer=item.manufacturer,
-                    purchase_value=item.purchase_value,
-
-                    created_image_url=item.created_image_url,
-                    latest_image_url=(
-                        item.latest_image_url
-                        or item.created_image_url
-                    ),
-
-                    created_by=admin_client.id
-                )
-
-                db.add(asset)
-                created_count += 1
-
-            except Exception as e:
-                errors.append({
-                    "row": index + 1,
-                    "error": str(e)
-                })
-
-            db.commit()
-
-    else:
-        for index, item in enumerate(payload.assets):
-
-            try:
-                category = (
+            category = (
                 db.query(AssetCategory)
                 .filter(
-                    AssetCategory.client_id == client_id,
-                    AssetCategory.id == item.category
+                    AssetCategory.id
+                    == item.category_id,
+
+                    AssetCategory.is_active
+                    == True,
+
+                    or_(
+                        AssetCategory.client_id
+                        == client_id,
+
+                        AssetCategory.client_id.is_(
+                            None
+                        )
+                    )
                 )
                 .first()
             )
 
-                if not category:
-                    raise Exception(
-                    f"Category '{item.category}' not found."
+            if not category:
+
+                raise Exception(
+                    f"Category "
+                    f"'{item.category_id}' "
+                    f"not found"
                 )
 
-                asset_type = (
+            # =====================================
+            # Asset Type Validation
+            # =====================================
+
+            asset_type = (
                 db.query(AssetType)
                 .filter(
-                    AssetType.client_id == client_id,
-                    AssetType.id == item.type
+                    AssetType.id
+                    == item.type_id,
+
+                    AssetType.is_active
+                    == True,
+
+                    or_(
+                        AssetType.client_id
+                        == client_id,
+
+                        AssetType.client_id.is_(
+                            None
+                        )
+                    )
                 )
                 .first()
             )
 
-                if not asset_type:
-                    raise Exception(
-                    f"Type '{item.type}' not found."
+            if not asset_type:
+
+                raise Exception(
+                    f"Asset type "
+                    f"'{item.type_id}' "
+                    f"not found"
                 )
 
-                department = None
+            # =====================================
+            # Validate Type Belongs To Category
+            # =====================================
 
-                if item.department:
-                    department = (
+            if (
+                asset_type.category_id
+                != category.id
+            ):
+
+                raise Exception(
+                    "Asset type does not belong "
+                    "to selected category"
+                )
+
+            # =====================================
+            # Department Validation
+            # =====================================
+
+            department_id = None
+
+            if item.department_id:
+
+                department = (
                     db.query(Department)
                     .filter(
-                        Department.client_id == client_id,
-                        Department.name == item.department
+                        Department.id
+                        == item.department_id,
+
+                        Department.client_id
+                        == client_id,
+
+                        Department.is_active
+                        == True
                     )
                     .first()
                 )
 
-                location = None
+                if not department:
 
-                if item.location:
-                    location = (
+                    raise Exception(
+                        f"Department "
+                        f"'{item.department_id}' "
+                        f"not found"
+                    )
+
+                department_id = department.id
+
+            # =====================================
+            # Location Validation
+            # =====================================
+
+            location_id = None
+
+            if item.location_id:
+
+                location = (
                     db.query(Location)
                     .filter(
-                        Location.client_id == client_id,
-                        Location.name == item.location
+                        Location.id
+                        == item.location_id,
+
+                        Location.client_id
+                        == client_id,
+
+                        Location.is_active
+                        == True
                     )
                     .first()
                 )
 
-                asset = Asset(
-                client_id=client_id,
-                category_id=category.id,
-                type_id=asset_type.id,
-                department_id=department.id if department else None,
-                location_id=location.id if location else None,
+                if not location:
 
-                name=item.name,
-                description=item.description,
-                serial_number=item.serial_number,
-                model=item.model,
-                manufacturer=item.manufacturer,
-                purchase_value=item.purchase_value,
+                    raise Exception(
+                        f"Location "
+                        f"'{item.location_id}' "
+                        f"not found"
+                    )
 
-                created_image_url=item.created_image_url,
-                latest_image_url=(
-                    item.latest_image_url
-                    or item.created_image_url
-                ),
+                location_id = location.id
 
-                created_by=created_by
+            # =====================================
+            # Assigned User Validation
+            # =====================================
+
+            assigned_user_id = None
+
+            if item.assigned_to_user_id:
+
+                assigned_user = (
+                    db.query(User)
+                    .filter(
+                        User.id
+                        == item.assigned_to_user_id,
+
+                        User.client_id
+                        == client_id,
+
+                        User.is_active
+                        == True
+                    )
+                    .first()
+                )
+
+                if not assigned_user:
+
+                    raise Exception(
+                        f"Assigned user "
+                        f"'{item.assigned_to_user_id}' "
+                        f"not found"
+                    )
+
+                assigned_user_id = (
+                    assigned_user.id
+                )
+
+            # =====================================
+            # Custom Fields
+            # =====================================
+
+            custom_fields = []
+
+            if item.custom_fields:
+
+                custom_fields = [
+                    (
+                        field.model_dump()
+                        if hasattr(
+                            field,
+                            "model_dump"
+                        )
+                        else field
+                    )
+                    for field
+                    in item.custom_fields
+                ]
+
+            # =====================================
+            # Generate Asset ID
+            # =====================================
+
+            asset_id = str(
+                uuid.uuid4()
             )
 
-                db.add(asset)
-                created_count += 1
+            # =====================================
+            # Create Asset
+            # =====================================
 
-            except Exception as e:
-                errors.append({
+            asset = Asset(
+                id=asset_id,
+
+                client_id=client_id,
+
+                category_id=category.id,
+
+                type_id=asset_type.id,
+
+                department_id=department_id,
+
+                location_id=location_id,
+
+                assigned_to_user_id=(
+                    assigned_user_id
+                ),
+
+                name=item.name,
+
+                description=item.description,
+
+                serial_number=item.serial_number,
+
+                model=item.model,
+
+                manufacturer=item.manufacturer,
+
+                purchase_date=item.purchase_date,
+
+                purchase_value=item.purchase_value,
+
+                asset_condition="ACTIVE",
+
+                tag_state="NOT_TAGGED",
+
+                current_latitude=None,
+
+                current_longitude=None,
+
+                last_scanned_by=None,
+
+                last_scanned_at=None,
+
+                qr_code_url=None,
+
+                created_image_url=None,
+
+                latest_image_url=None,
+
+                remarks=None,
+
+                custom_fields=custom_fields,
+
+                created_by=created_by,
+
+                is_active=True
+            )
+
+            # =====================================
+            # Save Asset
+            # =====================================
+
+            db.add(
+                asset
+            )
+
+            db.flush()
+
+            # =====================================
+            # Generate QR Code
+            # =====================================
+
+            qr_url = generate_asset_qr(
+                asset.id
+            )
+
+            asset.qr_code_url = qr_url
+
+            # =====================================
+            # Mark Successful
+            # =====================================
+
+            created_count += 1
+
+        except Exception as error:
+
+            # Roll back only pending row changes.
+            db.rollback()
+
+            errors.append({
                 "row": index + 1,
-                "error": str(e)
+                "name": item.name,
+                "serial_number": (
+                    item.serial_number
+                ),
+                "error": str(error)
             })
+
+    # =====================================
+    # Commit Bulk Assets
+    # =====================================
+
+    try:
 
         db.commit()
 
+    except Exception as error:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Bulk asset creation failed: "
+                f"{str(error)}"
+            )
+        )
+
+    # =====================================
+    # Return Result
+    # =====================================
+
     return {
-        "message": f"{created_count} assets created.",
+        "message": (
+            f"{created_count} assets created."
+        ),
         "created_count": created_count,
         "failed_count": len(errors),
+        "total_count": len(
+            payload.assets
+        ),
         "errors": errors
     }
 from app.models.asset import Asset
@@ -3051,6 +3640,7 @@ def create_maintenance_task(
 
     task = MaintenanceTask(
         asset_id=asset.id,
+    	name=asset.name,
         client_id=asset.client_id,
         raised_by=current_user["id"],
         issue_description=
@@ -3515,29 +4105,29 @@ def get_maintenance_tasks(
     status: str | None = None
 ):
     query = (
-        db.query(MaintenanceTask)
+        db.query(
+            MaintenanceTask,
+            Asset.name.label("name")
+        )
+        .join(
+            Asset,
+            Asset.id == MaintenanceTask.asset_id
+        )
     )
 
-    #
-    # Platform Admin
-    # can see everything
-    #
     if current_user["role"] != "ADMIN":
         query = query.filter(
             MaintenanceTask.client_id
             == current_user["client_id"]
         )
 
-    #
-    # Optional status filter
-    #
     if status:
         query = query.filter(
             MaintenanceTask.status
             == status
         )
 
-    return (
+    rows = (
         query
         .order_by(
             MaintenanceTask.created_at.desc()
@@ -3545,7 +4135,30 @@ def get_maintenance_tasks(
         .all()
     )
 
+    result = []
 
+    for task, name in rows:
+        result.append({
+            "id": task.id,
+            "asset_id": task.asset_id,
+            "name": name,
+            "client_id": task.client_id,
+            "raised_by": task.raised_by,
+            "issue_description": task.issue_description,
+            "photos_urls": task.photos_urls,
+            "estimated_cost": task.estimated_cost,
+            "is_emergency": task.is_emergency,
+            "status": task.status,
+            "approved_by": task.approved_by,
+            
+            
+            "completed_at": task.completed_at,
+            "vendor_name": task.vendor_name,
+            "parts_replaced": task.parts_replaced,
+            "created_at": task.created_at,
+        })
+
+    return result
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session

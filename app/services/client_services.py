@@ -3,6 +3,13 @@ import uuid
 from app.models.clients import Client
 
 
+from app.services.cloudinary_service import (
+    upload_image
+)
+from fastapi import (
+    HTTPException,
+    UploadFile
+)
 import uuid
 import re
 from sqlalchemy.orm import Session
@@ -42,73 +49,235 @@ def generate_unique_client_code(db: Session, base_name: str) -> str:
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 
-def create_client(db: Session, client_data, admin_id):
-    # Check for duplicate name
-    existing_client = db.query(Client).filter(
-        Client.name == client_data.name.strip()
-    ).first()
-    
+
+
+
+
+
+
+def create_client(
+    db: Session,
+    client_data,
+    admin_id: str,
+    image_file: UploadFile
+):
+
+    # =====================================
+    # Check Duplicate Client Name
+    # =====================================
+
+    existing_client = (
+        db.query(Client)
+        .filter(
+            Client.name
+            == client_data.name.strip()
+        )
+        .first()
+    )
+
     if existing_client:
+
         raise HTTPException(
             status_code=400,
-            detail=f"Client with name '{client_data.name}' already exists"
+            detail=(
+                f"Client with name "
+                f"'{client_data.name}' "
+                f"already exists"
+            )
         )
-    
-    # Check for duplicate email
-    existing_email = db.query(Client).filter(
-        Client.contact_email == client_data.contact_email.lower().strip()
-    ).first()
-    
+
+
+    # =====================================
+    # Check Duplicate Email
+    # =====================================
+
+    existing_email = (
+        db.query(Client)
+        .filter(
+            Client.contact_email
+            == client_data
+            .contact_email
+            .lower()
+            .strip()
+        )
+        .first()
+    )
+
     if existing_email:
+
         raise HTTPException(
             status_code=400,
-            detail=f"Client with email '{client_data.contact_email}' already exists"
+            detail=(
+                f"Client with email "
+                f"'{client_data.contact_email}' "
+                f"already exists"
+            )
         )
-    
-    # Generate unique client code
-    client_code = generate_unique_client_code(db, client_data.name)
-    
-    # Build full address
+
+
+    # =====================================
+    # Generate Client Code
+    # =====================================
+
+    client_code = (
+        generate_unique_client_code(
+            db,
+            client_data.name
+        )
+    )
+
+
+    # =====================================
+    # Upload Client Logo
+    # =====================================
+
+    logo_url = upload_image(
+        image_file=image_file,
+        folder=(
+            f"assetiq/clients/"
+            f"{client_code}/logo"
+        )
+    )
+
+
+    # =====================================
+    # Build Full Address
+    # =====================================
+
     address_parts = [
         client_data.address_line_1,
         client_data.address_line_2,
         client_data.address_line_3
     ]
-    full_address = "\n".join([part for part in address_parts if part])
-    
+
+    full_address = "\n".join(
+        [
+            part
+            for part in address_parts
+            if part
+        ]
+    )
+
+
+    # =====================================
+    # Create Client Object
+    # =====================================
+
     client = Client(
+
         id=str(uuid.uuid4()),
+
         client_code=client_code,
+
         name=client_data.name.strip(),
+
         industry=client_data.industry,
-        contact_email=client_data.contact_email.lower().strip(),
-        contact_phone=client_data.contact_phone,
-        address=full_address if full_address else None,
-        address_line_1=client_data.address_line_1,
-        address_line_2=client_data.address_line_2,
-        address_line_3=client_data.address_line_3,
-        logo_url=client_data.logo_url,
+
+        contact_email=(
+            client_data
+            .contact_email
+            .lower()
+            .strip()
+        ),
+
+        contact_phone=(
+            client_data.contact_phone
+        ),
+
+        address=(
+            full_address
+            if full_address
+            else None
+        ),
+
+        address_line_1=(
+            client_data.address_line_1
+        ),
+
+        address_line_2=(
+            client_data.address_line_2
+        ),
+
+        address_line_3=(
+            client_data.address_line_3
+        ),
+
+        logo_url=logo_url,
+
         is_active=True,
+
         created_by_admin_id=admin_id
     )
-    
-    try:
-        db.add(client)
-        db.commit()
-        db.refresh(client)
-        return client
-    except IntegrityError as e:
-        db.rollback()
-        if "Duplicate entry" in str(e):
-            if "idx_client_name" in str(e):
-                raise HTTPException(400, f"Client name '{client_data.name}' already exists")
-            elif "idx_client_email" in str(e):
-                raise HTTPException(400, f"Client email '{client_data.contact_email}' already exists")
-            elif "client_code" in str(e):
-                raise HTTPException(400, "System error: Unable to generate unique client code")
-        raise HTTPException(500, "Database error occurred")
 
-# Rest of your service functions remain the same
+
+    # =====================================
+    # Save Client
+    # =====================================
+
+    try:
+
+        db.add(client)
+
+        db.commit()
+
+        db.refresh(client)
+
+        return client
+
+
+    except IntegrityError as error:
+
+        db.rollback()
+
+        error_message = str(error)
+
+        if "Duplicate entry" in error_message:
+
+            if "idx_client_name" in error_message:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Client name "
+                        f"'{client_data.name}' "
+                        f"already exists"
+                    )
+                )
+
+            elif "idx_client_email" in error_message:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Client email "
+                        f"'{client_data.contact_email}' "
+                        f"already exists"
+                    )
+                )
+
+            elif "client_code" in error_message:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "System error: Unable to "
+                        "generate unique client code"
+                    )
+                )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Database error occurred"
+        )
+
+
+
+
+
+
+
+
+
 
 def get_all_clients(db):
     return db.query(Client).all()

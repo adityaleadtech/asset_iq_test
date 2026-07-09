@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers.client_router import router as client_router
 from app.routers.clients import router as clients_router
@@ -10,70 +11,55 @@ from app.routers.services import router as services_router
 from app.routers.subscription import router as subscription_router
 from app.routers.location import router as location_router
 from app.routers.users import router as users_router
-from fastapi.middleware.cors import CORSMiddleware
-from app.config import cloudinary
 from app.routers.map import router as map_router
-
-from app.routers import auth
-
+from app.routers import auth, asset, asset_categories, asset_type, dashboard, manager
+from app.routers.authentication import router as authentication_router
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(location_router)
-app.include_router(auth.router)
-app.include_router(platform_admin_router)
-app.include_router(clients_router)
-app.include_router(client_router)
-app.include_router(role_permissions_router)
-app.include_router(roles_router)
-app.include_router(department_router)
+# ============================================
+# COMMON API ROUTER with /api prefix
+# ============================================
+api_router = APIRouter(prefix="/api")
 
-app.include_router(subscription_router)
-app.include_router(users_router)
-app.include_router(services_router)
-from app.routers import asset, asset_categories, asset_type, dashboard
+# Add all routers to the common api_router
+api_router.include_router(location_router)
+api_router.include_router(auth.router)
+api_router.include_router(platform_admin_router)
+api_router.include_router(clients_router)
+api_router.include_router(client_router)
+api_router.include_router(role_permissions_router)
+api_router.include_router(roles_router)
+api_router.include_router(department_router)
+api_router.include_router(subscription_router)
+api_router.include_router(users_router)
+api_router.include_router(services_router)
+api_router.include_router(asset_categories.router)
+api_router.include_router(asset_type.router)
+api_router.include_router(dashboard.router)
+api_router.include_router(asset.router)
+api_router.include_router(manager.router)
+api_router.include_router(authentication_router)
+api_router.include_router(map_router)
 
-app.include_router(
-    asset_categories.router
-)
-app.include_router(asset_type.router)
-app.include_router(dashboard.router)
+# Include the common router in the app
+app.include_router(api_router)
 
-
-
-
-from app.routers import asset
-
-app.include_router(
-    asset.router
-)
-
-from app.routers import manager
-
-app.include_router(
-    manager.router
-)
-
-
-from app.routers.authentication import (
-    router as authentication_router
-)
-
-app.include_router(
-    authentication_router
-)
-app.include_router(
-    map_router
-)
-
+# ============================================
+# ROOT ENDPOINTS (no /api prefix)
+# ============================================
 @app.get("/")
 def test():
     return {"message": "started"}
+
+@app.get("/api")
+def api_root():
+    return {"message": "API is running. All endpoints are under /api/*"}

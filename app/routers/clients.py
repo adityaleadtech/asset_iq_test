@@ -1,7 +1,9 @@
 from fastapi import APIRouter
-from fastapi import Depends
+from fastapi import Depends,status
 from sqlalchemy.orm import Session
-from fastapi import HTTPException
+import json
+from fastapi import HTTPException, File, Form, UploadFile
+from pydantic import ValidationError
 from app.config.dependencies import get_db
 
 from app.schemas.clients import (
@@ -47,19 +49,83 @@ router = APIRouter(
 
 @router.post(
     "/create",
-    response_model=ClientResponse
+    response_model=ClientResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new client",
+    description="""
+Create a client with a logo.
+
+Request type:
+
+multipart/form-data
+
+Fields:
+
+client_data:
+JSON string containing client information.
+
+image_file:
+Client logo image file.
+"""
 )
 def create_new_client(
-    client: ClientCreate,
+    client_data: str = Form(...),
+    image_file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_admin=Depends(admin_required)
 ):
-    return create_client(
-        db,
-        client,
-        current_admin["id"]
-    )
 
+    # =====================================
+    # Parse JSON
+    # =====================================
+
+    try:
+
+        parsed_client_data = json.loads(
+            client_data
+        )
+
+    except json.JSONDecodeError as error:
+
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": (
+                    "client_data must be valid JSON"
+                ),
+                "error": str(error)
+            }
+        )
+
+    # =====================================
+    # Validate Schema
+    # =====================================
+
+    try:
+
+        validated_client_data = (
+            ClientCreate(
+                **parsed_client_data
+            )
+        )
+
+    except ValidationError as error:
+
+        raise HTTPException(
+            status_code=422,
+            detail=error.errors()
+        )
+
+    # =====================================
+    # Create Client
+    # =====================================
+
+    return create_client(
+        db=db,
+        client_data=validated_client_data,
+        admin_id=current_admin["id"],
+        image_file=image_file
+    )
 
 
 

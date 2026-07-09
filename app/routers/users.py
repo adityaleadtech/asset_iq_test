@@ -272,9 +272,9 @@ from app.schemas.users import UserLogin
 from app.services.user_service import (
     login_user
 )
-@router.post(
-    "/login"
-)
+#@router.post(
+#    "/login"
+#)
 def login(
     credentials: UserLogin,
     db: Session = Depends(get_db)
