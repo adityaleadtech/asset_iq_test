@@ -1819,7 +1819,7 @@ def get_asset_location(
     current_user: dict
 ):
     """
-    Fetch latest location of asset.
+    Fetch asset with latest location.
     """
 
     asset_dict = get_asset_by_id(
@@ -1828,17 +1828,9 @@ def get_asset_location(
         current_user
     )
 
-    return {
-        "asset_id": asset_dict["id"],
-        "latitude": asset_dict["current_latitude"],
-        "longitude": asset_dict["current_longitude"],
-        "tag_state": asset_dict["tag_state"],
-        "asset_condition": asset_dict["asset_condition"],
-        "last_scanned_by": asset_dict["last_scanned_by"],
-        "last_scanned_at": asset_dict["last_scanned_at"]
-    }
+    print("name_____---" + asset_dict["name"])
 
-
+    return asset_dict
 def get_asset_qr(
     db: Session,
     asset_id: str,

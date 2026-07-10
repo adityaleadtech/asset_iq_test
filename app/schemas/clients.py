@@ -15,8 +15,8 @@ class ClientCreate(BaseModel):
     # Note: client_code is NOT in request body
 
 class ClientResponse(BaseModel):
-    id: str
-    client_code: str  # This will be returned in response
+    id: str # This will be returned in response
+    client_code: Optional[str] = None
     name: str
     industry: str | None
     contact_email: str

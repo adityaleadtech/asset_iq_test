@@ -1,12 +1,20 @@
-from pydantic import BaseModel
-from typing import List, Optional
+from decimal import Decimal
 
-class AssetMap(BaseModel):
+from pydantic import BaseModel, Field
+
+
+class AssetMapItem(BaseModel):
     asset_id: str
-    current_latitude: float  # ✅ Changed to float
-    current_longitude: float  # ✅ Changed to float
-    name: Optional[str] = None
-    location_id: Optional[str] = None
+
+    current_latitude: Decimal
+    current_longitude: Decimal
+
+    model_config = {
+        "from_attributes": True
+    }
+
 
 class AssetMapResponse(BaseModel):
-    assets: List[AssetMap]
+    assets: list[AssetMapItem] = Field(
+        default_factory=list
+    )

@@ -119,18 +119,52 @@ class AssetVerificationFormResponse(BaseModel):
 
 
 class AssetLocationResponse(BaseModel):
-    asset_id: str
-    latitude: float | None = None
-    longitude: float | None = None
-    tag_state: str
-    asset_condition: str
+    id: str
+    client_id: str
+
+    category_id: str | None = None
+    type_id: str | None = None
+    department_id: str | None = None
+    assigned_to_user_id: str | None = None
+    location_id: str | None = None
+
+    location: dict | None = None
+
+    name: str
+    description: str | None = None
+    serial_number: str | None = None
+    model: str | None = None
+    manufacturer: str | None = None
+
+    purchase_date: date | None = None
+    purchase_value: Decimal | float | None = None
+
+    asset_condition: str | None = None
+    tag_state: str | None = None
+
+    is_active: bool
+
+    qr_code_url: str | None = None
+    created_image_url: str | None = None
+    latest_image_url: str | None = None
+
+    current_latitude: float | None = None
+    current_longitude: float | None = None
+
     last_scanned_by: str | None = None
     last_scanned_at: datetime | None = None
+
+    remarks: str | None = None
+
+    created_by: str | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
 
 
+        
 class AssetQrResponse(BaseModel):
     asset_id: str
     asset_name: str
