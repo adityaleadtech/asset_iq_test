@@ -267,19 +267,19 @@ def create_manager(db, manager_data, current_user):
         )
 
 
-def get_all_managers(db, current_user,client_id: str | None = None):
-    if current_user["role"] == "ADMIN" and client_id:
-        return db.query(User).filter(User.role=="MANAGER",User.is_active==True,User.client_id==client_id).all()    
-
-    if current_user["role"] == "CLIENT_ADMIN":
-        query = query.filter(User.client_id == current_user["client_id"])
-        return query.filter(User.role == "MANAGER", User.is_active == True).all()
-
-
+def get_all_managers(db, current_user, client_id: str | None = None):
+    # Start with base query
     query = db.query(User).filter(User.role == "MANAGER", User.is_active == True)
     
-   
-
+    if current_user["role"] == "ADMIN" and client_id:
+        query = query.filter(User.client_id == client_id)
+        return query.all()
+    
+    if current_user["role"] == "CLIENT_ADMIN":
+        query = query.filter(User.client_id == current_user["client_id"])
+        return query.all()
+    
+    # For other roles (like MANAGER or USER) - if they have permission
     return query.all()
 
 
