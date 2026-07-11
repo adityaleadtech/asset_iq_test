@@ -14,6 +14,7 @@ from app.routers.users import router as users_router
 from app.routers.map import router as map_router
 from app.routers import auth, asset, asset_categories, asset_type, dashboard, manager
 from app.routers.authentication import router as authentication_router
+from app.routers.profile import router as profile_router
 
 app = FastAPI()
 
@@ -49,7 +50,7 @@ api_router.include_router(asset.router)
 api_router.include_router(manager.router)
 api_router.include_router(authentication_router)
 api_router.include_router(map_router)
-
+api_router.include_router(profile_router)
 # Include the common router in the app
 app.include_router(api_router)
 
