@@ -414,13 +414,27 @@ from app.models.tracking_session_asset import TrackingSessionAsset
 from app.models.users import User
 
 
+
+from collections import defaultdict
+
+from sqlalchemy.orm import Session
+
+from app.models.asset import Asset
+from app.models.gps_logs import GPSLog
+from app.models.tracking_session import TrackingSession
+from app.models.tracking_session_asset import TrackingSessionAsset
+from app.models.user import User
+
+
 def get_live_tracking_assets(
     db: Session,
     current_user
 ):
-    """
-    Returns every asset currently being tracked.
-    """
+
+    # -------------------------------------
+    # Query 1
+    # Active Tracking Sessions + Assets
+    # -------------------------------------
 
     query = (
         db.query(
@@ -449,7 +463,6 @@ def get_live_tracking_assets(
         )
     )
 
-    # Restrict to current client unless Platform Admin
     if current_user["role"] != "ADMIN":
 
         query = query.filter(
@@ -459,9 +472,74 @@ def get_live_tracking_assets(
 
     rows = query.all()
 
+    if not rows:
+        return {"assets": []}
+
+    # -------------------------------------
+    # Collect Active Sessions
+    # -------------------------------------
+
+    session_ids = list({
+        session.id
+        for session, _, _, _ in rows
+    })
+
+    # -------------------------------------
+    # Query 2
+    # Fetch all GPS logs
+    # -------------------------------------
+
+    gps_logs = (
+        db.query(GPSLog)
+        .filter(
+            GPSLog.tracking_session_id.in_(session_ids)
+        )
+        .order_by(
+            GPSLog.tracking_session_id,
+            GPSLog.asset_id,
+            GPSLog.recorded_at
+        )
+        .all()
+    )
+
+    # -------------------------------------
+    # Group GPS logs
+    # -------------------------------------
+
+    gps_map = defaultdict(list)
+
+    for log in gps_logs:
+
+        gps_map[
+            (
+                log.tracking_session_id,
+                log.asset_id
+            )
+        ].append({
+
+            "latitude": log.latitude,
+
+            "longitude": log.longitude,
+
+            "recorded_at": log.recorded_at
+
+        })
+
+    # -------------------------------------
+    # Build Response
+    # -------------------------------------
+
     response = []
 
     for session, mapping, asset, user in rows:
+
+        path = gps_map.get(
+            (
+                session.id,
+                asset.id
+            ),
+            []
+        )
 
         response.append({
 
@@ -471,21 +549,27 @@ def get_live_tracking_assets(
 
             "asset_name": asset.name,
 
-            "latitude": asset.current_latitude,
-
-            "longitude": asset.current_longitude,
-
-            "last_updated": asset.last_scanned_at,
+            "serial_number": asset.serial_number,
 
             "tracked_by_user_id": user.id,
 
-            "tracked_by_name": user.full_name
+            "tracked_by_name": user.full_name,
+
+            "current_latitude": asset.current_latitude,
+
+            "current_longitude": asset.current_longitude,
+
+            "last_updated": asset.last_scanned_at,
+
+            "path": path
+
         })
 
-    return response
+    return {
 
+        "assets": response
 
-
+    }   
 
 from fastapi import HTTPException
 

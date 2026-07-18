@@ -10,6 +10,7 @@ from app.config.dependencies import (
 
 from app.schemas.tracking import (
     LiveTrackingAssetResponse,
+    LiveTrackingResponse,
     StartTrackingRequest,
     TrackingAssetResponse,
     TrackingHistoryResponse,
@@ -166,34 +167,36 @@ def stop_tracking_router(
     )
 
 
-
 @router.get(
     "/live",
-    response_model=list[LiveTrackingAssetResponse],
-    summary="Get Live Tracked Assets",
+    response_model=LiveTrackingResponse,
+    summary="Get Live Asset Tracking",
     description="""
 Returns all assets that are currently being tracked.
 
-This endpoint is primarily used by the web dashboard to
-display live asset locations on a map.
+Each asset contains:
 
-Platform Admin:
-- Returns every active tracking session.
+• Current GPS location
 
-Client Admin / Manager / User:
-- Returns only assets belonging to their client.
+• Complete GPS path
+
+• Tracking session
+
+• Tracking user
+
+Used by the live dashboard to render
+all markers and polylines on a single map.
 """
 )
 def get_live_tracking_assets_router(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
+
     return get_live_tracking_assets(
         db,
         current_user
     )
-
-
 
 @router.get(
     "/session/{tracking_session_id}",
