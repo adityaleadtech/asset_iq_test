@@ -51,6 +51,9 @@ api_router.include_router(manager.router)
 api_router.include_router(authentication_router)
 api_router.include_router(map_router)
 api_router.include_router(profile_router)
+from app.routers.tracking import router as tracking_router
+
+app.include_router(tracking_router)
 # Include the common router in the app
 app.include_router(api_router)
 
