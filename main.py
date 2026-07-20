@@ -15,6 +15,9 @@ from app.routers.map import router as map_router
 from app.routers import auth, asset, asset_categories, asset_type, dashboard, manager
 from app.routers.authentication import router as authentication_router
 from app.routers.profile import router as profile_router
+from app.routers.tracking import router as tracking_router
+
+
 
 app = FastAPI()
 
@@ -32,6 +35,7 @@ app.add_middleware(
 api_router = APIRouter(prefix="/api")
 
 # Add all routers to the common api_router
+api_router.include_router(tracking_router)
 api_router.include_router(location_router)
 api_router.include_router(auth.router)
 api_router.include_router(platform_admin_router)
@@ -51,12 +55,11 @@ api_router.include_router(manager.router)
 api_router.include_router(authentication_router)
 api_router.include_router(map_router)
 api_router.include_router(profile_router)
-from app.routers.tracking import router as tracking_router
+
 
 
 # Include the common router in the app
-app.include_router(api_router)
-app.include_router(tracking_router)
+
 
 # ============================================
 # ROOT ENDPOINTS (no /api prefix)
