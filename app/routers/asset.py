@@ -796,19 +796,39 @@ def fetch_verification_data(
 ):
     return get_asset_verification_data(db, asset_id, current_user)
 
+from fastapi import Form, File, UploadFile
+from fastapi import Form, File, UploadFile
+
 @router.post(
     "/{asset_id}/verify",
     response_model=AssetResponse,
     summary="Verify Asset"
 )
-def verify_existing_asset(
+async def verify_existing_asset(  # Make it async
     asset_id: str,
-    verification_data: AssetVerificationRequest,
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    asset_condition: str = Form(...),
+    remarks: str | None = Form(None),
+    image_file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    return asset_service.verify_asset(db, asset_id, verification_data, current_user)
-
+    verification_data = AssetVerificationRequest(
+        latitude=latitude,
+        longitude=longitude,
+        asset_condition=asset_condition,
+        remarks=remarks,
+        image_url=None
+    )
+    
+    return await asset_service.verify_asset(  # await the result
+        db, 
+        asset_id, 
+        verification_data, 
+        image_file, 
+        current_user
+    )
 # ==================== GENERIC ASSET CRUD (MUST COME LAST) ====================
 # These catch-all routes must be defined LAST
 

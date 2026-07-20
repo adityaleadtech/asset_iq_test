@@ -306,85 +306,85 @@ def stop_tracking(
 
 
 def get_trackable_assets(
-    db: Session,
-    current_user
-):
-    """
-    Returns assets available for tracking.
-    """
+        db: Session,
+        current_user
+    ):
+        """
+        Returns assets available for tracking.
+        """
 
-    role = current_user["role"]
+        role = current_user["role"]
 
-    # =====================================
-    # USER
-    # =====================================
+        # =====================================
+        # USER
+        # =====================================
 
-    if role == "USER":
+        if role == "USER":
 
-        assets = (
-            db.query(Asset)
-            .filter(
-                Asset.client_id == current_user["client_id"],
-                Asset.assigned_to_user_id == current_user["id"],
-                Asset.is_active == True
+            assets = (
+                db.query(Asset)
+                .filter(
+                    Asset.client_id == current_user["client_id"],
+                    Asset.assigned_to_user_id == current_user["id"],
+                    Asset.is_active == True
+                )
+                .all()
             )
-            .all()
-        )
 
-    # =====================================
-    # MANAGER
-    # =====================================
+        # =====================================
+        # MANAGER
+        # =====================================
 
-    elif role == "MANAGER":
+        elif role == "MANAGER":
 
-        assets = (
-            db.query(Asset)
-            .filter(
-                Asset.client_id == current_user["client_id"],
-                Asset.department_id == current_user["department_id"],
-                Asset.is_active == True
+            assets = (
+                db.query(Asset)
+                .filter(
+                    Asset.client_id == current_user["client_id"],
+                    Asset.department_id == current_user["department_id"],
+                    Asset.is_active == True
+                )
+                .all()
             )
-            .all()
-        )
 
-    # =====================================
-    # CLIENT ADMIN
-    # =====================================
+        # =====================================
+        # CLIENT ADMIN
+        # =====================================
 
-    elif role == "CLIENT_ADMIN":
+        elif role == "CLIENT_ADMIN":
 
-        assets = (
-            db.query(Asset)
-            .filter(
-                Asset.client_id == current_user["client_id"],
-                Asset.is_active == True
+            assets = (
+                db.query(Asset)
+                .filter(
+                    Asset.client_id == current_user["client_id"],
+                    Asset.is_active == True
+                )
+                .all()
             )
-            .all()
-        )
 
-    # =====================================
-    # PLATFORM ADMIN
-    # =====================================
+        # =====================================
+        # PLATFORM ADMIN
+        # =====================================
 
-    else:
+        else:
 
-        assets = (
-            db.query(Asset)
-            .filter(
-                Asset.is_active == True
+            assets = (
+                db.query(Asset)
+                .filter(
+                    Asset.is_active == True
+                )
+                .all()
             )
-            .all()
-        )
 
-    return [
-    TrackingAssetResponse(
-        asset_id=asset.id,
-        asset_name=asset.name,
-        serial_number=asset.serial_number,
-        asset_tag=getattr(asset, "asset_tag", None),
-    )
-    for asset in assets
-]
+        return [
+        TrackingAssetResponse(
+            asset_id=asset.id,
+            asset_name=asset.name,
+            serial_number=asset.serial_number,
+            asset_tag=getattr(asset, "asset_tag", None),
+        )
+        for asset in assets
+    ]
 
 
 def get_live_tracking_assets(

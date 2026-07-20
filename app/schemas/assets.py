@@ -72,7 +72,7 @@ class AssetVerificationRequest(BaseModel):
 class AssetVerificationResponse(BaseModel):
     asset_id: str
     asset_condition: str
-    tag_state: str
+    tag_state: str 
     current_latitude: float | None = None
     current_longitude: float | None = None
     latest_image_url: str | None = None

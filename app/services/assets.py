@@ -1,8 +1,9 @@
 from datetime import datetime
 import json
+import tempfile
 import uuid
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
@@ -38,57 +39,110 @@ from app.schemas.assets import BarcodeResponse
 
 # barcode generator service
 
-def generate_asset_barcode(
-    db: Session,
-    asset_id: str,
-):
-    asset = (
-        db.query(Asset)
-        .filter(
-            Asset.id == asset_id,
-            Asset.is_active == True
+def generate_asset_barcode(asset_id: str, client_id: str = None) -> str:
+    """
+    Generate a Code128 barcode for an asset.
+    
+    Args:
+        asset_id: The asset UUID
+        client_id: Optional client ID for folder organization
+        
+    Returns:
+        Cloudinary URL of the uploaded barcode
+    """
+    barcode_path = None
+    
+    try:
+        print(f"GENERATING BARCODE FOR ASSET: {asset_id}")
+        
+        # Create barcode using Code128
+        code128 = barcode.get_barcode_class('code128')
+        
+        # Generate the barcode instance
+        barcode_instance = code128(
+            asset_id,
+            writer=ImageWriter()
         )
-        .first()
-    )
-
-    if not asset:
+        
+        # Create temporary file WITHOUT extension
+        # python-barcode will append the extension automatically
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            temp_path = tmp.name
+        
+        print(f"TEMP FILE PATH (without extension): {temp_path}")
+        
+        # Save barcode - save() returns the actual filename with extension
+        barcode_path = barcode_instance.save(
+            temp_path,
+            options={
+                'module_width': 0.2,
+                'module_height': 15.0,
+                'text_distance': 5.0,
+                'font_size': 10,
+                'quiet_zone': 6.0,
+                'background': 'white',
+                'foreground': 'black'
+            }
+        )
+        
+        print(f"BARCODE SAVED TO: {barcode_path}")
+        
+        # Determine Cloudinary folder
+        if client_id:
+            folder = f"assetiq/{client_id}/assets/barcodes"
+        else:
+            folder = "assetiq/assets/barcodes"
+        
+        print(f"UPLOADING BARCODE TO CLOUDINARY: {folder}")
+        
+        # Upload to Cloudinary
+        upload_result = cloudinary.uploader.upload(
+            barcode_path,
+            folder=folder,
+            resource_type="image",
+            public_id=asset_id,
+            overwrite=True
+        )
+        
+        # Get the secure URL
+        barcode_url = upload_result.get('secure_url')
+        
+        if not barcode_url:
+            raise HTTPException(
+                status_code=500,
+                detail="Cloudinary did not return a barcode URL"
+            )
+        
+        print(f"BARCODE UPLOADED SUCCESSFULLY: {barcode_url}")
+        
+        return barcode_url
+        
+    except HTTPException:
+        raise
+        
+    except Exception as error:
+        print(f"BARCODE GENERATION FAILED: {error}")
         raise HTTPException(
-            status_code=404,
-            detail="Asset not found."
+            status_code=500,
+            detail=f"Barcode generation failed: {str(error)}"
         )
-
-    code = barcode.get(
-        "code128",
-        asset.id,
-        writer=ImageWriter()
-    )
-
-    buffer = BytesIO()
-
-    code.write(buffer)
-
-    buffer.seek(0)
-
-    upload = cloudinary.uploader.upload(
-        buffer,
-        folder="assetiq/barcodes",
-        public_id=f"{asset.id}",
-        overwrite=True,
-        resource_type="image"
-    )
-
-    asset.barcode_url = upload["secure_url"]
-
-    db.commit()
-
-    db.refresh(asset)
-
-    return BarcodeResponse(
-        message="Barcode generated successfully.",
-        barcode_url=asset.barcode_url
-    )
-
-
+        
+    finally:
+        # Clean up temporary file - guaranteed to run even if upload fails
+        if barcode_path and os.path.exists(barcode_path):
+            try:
+                os.remove(barcode_path)
+                print(f"TEMPORARY FILE DELETED: {barcode_path}")
+            except Exception as cleanup_error:
+                print(f"FAILED TO DELETE TEMP FILE: {cleanup_error}")
+        
+        # Also clean up the original temp file without extension if it exists
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+                print(f"TEMP FILE WITHOUT EXTENSION DELETED: {temp_path}")
+            except Exception as cleanup_error:
+                print(f"FAILED TO DELETE TEMP FILE: {cleanup_error}")
 # ============================================
 # HELPER: BUILD LOCATION PATH
 # ============================================
@@ -1722,10 +1776,15 @@ def get_asset_verification(db: Session, asset_id: str, current_user: dict):
     return asset
 
 
-def verify_asset(
+
+
+
+
+async def verify_asset(
     db: Session,
     asset_id: str,
     verification_data: AssetVerificationRequest,
+    image_file: UploadFile | None,  # Add this parameter
     current_user: dict
 ):
     asset = (
@@ -1744,22 +1803,43 @@ def verify_asset(
     get_asset_by_id(db, asset_id, current_user)
 
     now = datetime.now(timezone.utc)
+    
+    # Handle image upload
+    image_url = None
+    if image_file:
+        try:
+            upload_result = cloudinary.uploader.upload(
+                image_file.file,
+                folder=f"assetiq/{asset.client_id}/asset-verifications",
+                resource_type="image"
+            )
+            image_url = upload_result["secure_url"]
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to upload image: {str(e)}"
+            )
+        finally:
+            # Close the file
+            await image_file.close()  # Note: This requires async
 
+    # Update asset with verification data
     asset.current_latitude = verification_data.latitude
     asset.current_longitude = verification_data.longitude
     asset.asset_condition = verification_data.asset_condition
-    asset.latest_image_url = verification_data.image_url
+    asset.latest_image_url = image_url  # Use uploaded image URL
     asset.remarks = verification_data.remarks
     asset.last_scanned_by = current_user["id"]
     asset.last_scanned_at = now
     asset.tag_state = "TAGGED"
 
+    # Create scan log
     scan_log = AssetScanLog(
         id=str(uuid.uuid4()),
         asset_id=asset.id,
         latitude=verification_data.latitude,
         longitude=verification_data.longitude,
-        image_url=verification_data.image_url,
+        image_url=image_url,  # Use uploaded image URL
         remarks=verification_data.remarks,
         asset_condition=verification_data.asset_condition,
         tag_state="TAGGED",
@@ -1811,7 +1891,6 @@ def verify_asset(
         "created_at": asset.created_at,
         "updated_at": asset.updated_at
     }
-
 
 from app.models.asset import AssetScanLog
 
