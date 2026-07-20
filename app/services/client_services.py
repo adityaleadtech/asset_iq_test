@@ -303,6 +303,29 @@ def get_client_admin(db, client_id: str, current_user):
 
     return admin
 
+def get_all_client_admins(db: Session, client_id: str, current_user):
+    """
+    Get ALL admins for a client (including deactivated ones)
+    Used to show reactivate button for inactive admins
+    """
+    if current_user["role"] != "ADMIN":
+        if current_user["client_id"] != client_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied"
+            )
+
+    # Get ALL admins - NO is_active filter
+    admins = (
+        db.query(User)
+        .filter(
+            User.client_id == client_id,
+            User.role == "CLIENT_ADMIN"
+        )
+        .all()
+    )
+
+    return admins  # Returns list, may be empty
 
 def get_client_admin_details(db, admin_id: str):
     """

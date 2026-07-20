@@ -22,7 +22,8 @@ from app.services.client_services import (
     update_client_admin,
     update_admin_password,  # ← ADD THIS
     deactivate_admin,       # ← ADD THIS
-    reactivate_admin        # ← ADD THIS
+    reactivate_admin,       # ← ADD THIS
+    get_all_client_admins   # ← ADD THIS
 )
 from app.services.user_service import (
     create_client_admin,
@@ -176,3 +177,21 @@ def reactivate_admin_route(
         db,
         admin_id
     )
+
+
+# ============= NEW ROUTE: Fetch All Admins =============
+
+@router.get(
+    "/{client_id}/admins/all",
+    response_model=list[UserResponse]
+)
+def get_all_client_admins_route(
+    client_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """
+    Get ALL admins for a client (including deactivated)
+    Used to show reactivate button for inactive admins
+    """
+    return get_all_client_admins(db, client_id, current_user)
