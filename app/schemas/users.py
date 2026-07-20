@@ -263,3 +263,10 @@ class UserServiceResponse(
         from_attributes = True
 
 
+# ============= NEW SCHEMA =============
+
+class PasswordUpdateSchema(BaseModel):
+    """
+    Schema for updating admin password
+    """
+    password: str
