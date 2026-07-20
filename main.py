@@ -56,7 +56,7 @@ api_router.include_router(authentication_router)
 api_router.include_router(map_router)
 api_router.include_router(profile_router)
 
-
+app.include_router(api_router)
 
 # Include the common router in the app
 
