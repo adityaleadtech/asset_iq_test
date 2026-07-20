@@ -20,7 +20,73 @@ from app.schemas.assets import AssetBulkCreate, AssetVerificationRequest, Create
 from app.utils.qr import generate_asset_qr
 from datetime import datetime, timezone
 import cloudinary.uploader
+from io import BytesIO
 
+import barcode
+import cloudinary.uploader
+
+from barcode.writer import ImageWriter
+
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
+import app.config.cloudinary
+
+from app.models.asset import Asset
+from app.schemas.assets import BarcodeResponse
+
+
+# barcode generator service
+
+def generate_asset_barcode(
+    db: Session,
+    asset_id: str,
+):
+    asset = (
+        db.query(Asset)
+        .filter(
+            Asset.id == asset_id,
+            Asset.is_active == True
+        )
+        .first()
+    )
+
+    if not asset:
+        raise HTTPException(
+            status_code=404,
+            detail="Asset not found."
+        )
+
+    code = barcode.get(
+        "code128",
+        asset.id,
+        writer=ImageWriter()
+    )
+
+    buffer = BytesIO()
+
+    code.write(buffer)
+
+    buffer.seek(0)
+
+    upload = cloudinary.uploader.upload(
+        buffer,
+        folder="assetiq/barcodes",
+        public_id=f"{asset.id}",
+        overwrite=True,
+        resource_type="image"
+    )
+
+    asset.barcode_url = upload["secure_url"]
+
+    db.commit()
+
+    db.refresh(asset)
+
+    return BarcodeResponse(
+        message="Barcode generated successfully.",
+        barcode_url=asset.barcode_url
+    )
 
 
 # ============================================

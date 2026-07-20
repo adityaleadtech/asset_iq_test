@@ -456,3 +456,12 @@ class MaintenanceTaskResponse(BaseModel):
 
 class RejectMaintenanceRequest(BaseModel):
     rejection_reason: str
+
+
+
+
+from pydantic import BaseModel
+
+class BarcodeResponse(BaseModel):
+    message: str
+    barcode_url: str

@@ -17,6 +17,7 @@ from app.schemas.tracking import (
     StartTrackingResponse,
     StopTrackingRequest,
     StopTrackingResponse,
+    TrackingAssetResponse,
     TrackingUpdateRequest,
 )
 
@@ -375,7 +376,15 @@ def get_trackable_assets(
             .all()
         )
 
-    return assets
+    return [
+    TrackingAssetResponse(
+        asset_id=asset.id,
+        asset_name=asset.name,
+        serial_number=asset.serial_number,
+        asset_tag=getattr(asset, "asset_tag", None),
+    )
+    for asset in assets
+]
 
 
 def get_live_tracking_assets(

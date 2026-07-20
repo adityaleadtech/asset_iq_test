@@ -182,6 +182,7 @@ class Asset(Base):
         "AssetType",
         back_populates="assets"
     )
+    barcode_url = Column(Text, nullable=True)
 
     department = relationship(
         "Department",
