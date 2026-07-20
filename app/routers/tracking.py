@@ -9,7 +9,6 @@ from app.config.dependencies import (
 )
 
 from app.schemas.tracking import (
-    LiveTrackingAssetResponse,
     LiveTrackingResponse,
     StartTrackingRequest,
     TrackingAssetResponse,
@@ -19,7 +18,6 @@ from app.schemas.tracking import (
     TrackingUpdateRequest,
     StopTrackingRequest,
 )
-
 from app.services.tracking import (
     get_live_tracking_assets,
     get_trackable_assets,

@@ -1,18 +1,24 @@
 import uuid
 from datetime import datetime
+from collections import defaultdict
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.models.asset import Asset
 from app.models.tracking_session import TrackingSession
 from app.models.tracking_session_asset import TrackingSessionAsset
+from app.models.gps_logs import GPSLog
+from app.models.users import User  # FIXED: Using correct import path
 
 from app.schemas.tracking import (
     StartTrackingRequest,
     StartTrackingResponse,
+    StopTrackingRequest,
+    StopTrackingResponse,
+    TrackingUpdateRequest,
 )
-
 
 
 def start_tracking(
@@ -129,19 +135,6 @@ def start_tracking(
     )
 
 
-import uuid
-
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-
-from app.models.asset import Asset
-from app.models.gps_logs import GPSLog
-from app.models.tracking_session import TrackingSession
-from app.models.tracking_session_asset import TrackingSessionAsset
-
-from app.schemas.tracking import TrackingUpdateRequest
-
-
 def update_tracking_location(
     db: Session,
     payload: TrackingUpdateRequest,
@@ -234,22 +227,6 @@ def update_tracking_location(
     }
 
 
-
-from datetime import datetime
-
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
-
-from app.models.asset import Asset
-from app.models.tracking_session import TrackingSession
-from app.models.tracking_session_asset import TrackingSessionAsset
-
-from app.schemas.tracking import (
-    StopTrackingRequest,
-    StopTrackingResponse,
-)
-
-
 def stop_tracking(
     db: Session,
     payload: StopTrackingRequest,
@@ -327,10 +304,6 @@ def stop_tracking(
     )
 
 
-
-from app.models.asset import Asset
-
-
 def get_trackable_assets(
     db: Session,
     current_user
@@ -402,38 +375,19 @@ def get_trackable_assets(
             .all()
         )
 
-    return 
-
-
-
-from sqlalchemy.orm import joinedload
-
-from app.models.asset import Asset
-from app.models.tracking_session import TrackingSession
-from app.models.tracking_session_asset import TrackingSessionAsset
-from app.models.users import User
-
-
-
-from collections import defaultdict
-
-from sqlalchemy.orm import Session
-
-from app.models.asset import Asset
-from app.models.gps_logs import GPSLog
-from app.models.tracking_session import TrackingSession
-from app.models.tracking_session_asset import TrackingSessionAsset
-from app.models.user import User
+    return assets
 
 
 def get_live_tracking_assets(
     db: Session,
     current_user
 ):
+    """
+    Get all assets currently being tracked with their GPS paths
+    """
 
     # -------------------------------------
-    # Query 1
-    # Active Tracking Sessions + Assets
+    # Query 1: Active Tracking Sessions + Assets
     # -------------------------------------
 
     query = (
@@ -445,18 +399,15 @@ def get_live_tracking_assets(
         )
         .join(
             TrackingSessionAsset,
-            TrackingSession.id ==
-            TrackingSessionAsset.tracking_session_id
+            TrackingSession.id == TrackingSessionAsset.tracking_session_id
         )
         .join(
             Asset,
-            Asset.id ==
-            TrackingSessionAsset.asset_id
+            Asset.id == TrackingSessionAsset.asset_id
         )
         .join(
             User,
-            User.id ==
-            TrackingSession.user_id
+            User.id == TrackingSession.user_id
         )
         .filter(
             TrackingSession.status == "ACTIVE"
@@ -466,8 +417,7 @@ def get_live_tracking_assets(
     if current_user["role"] != "ADMIN":
 
         query = query.filter(
-            TrackingSession.client_id ==
-            current_user["client_id"]
+            TrackingSession.client_id == current_user["client_id"]
         )
 
     rows = query.all()
@@ -485,8 +435,7 @@ def get_live_tracking_assets(
     })
 
     # -------------------------------------
-    # Query 2
-    # Fetch all GPS logs
+    # Query 2: Fetch all GPS logs
     # -------------------------------------
 
     gps_logs = (
@@ -569,14 +518,7 @@ def get_live_tracking_assets(
 
         "assets": response
 
-    }   
-
-from fastapi import HTTPException
-
-from app.models.tracking_session import TrackingSession
-from app.models.tracking_session_asset import TrackingSessionAsset
-from app.models.asset import Asset
-from app.models.users import User
+    }
 
 
 def get_tracking_session_details(
@@ -584,6 +526,9 @@ def get_tracking_session_details(
     tracking_session_id: str,
     current_user
 ):
+    """
+    Get detailed information about a specific tracking session
+    """
 
     session = (
         db.query(TrackingSession)
@@ -625,12 +570,10 @@ def get_tracking_session_details(
         )
         .join(
             Asset,
-            Asset.id ==
-            TrackingSessionAsset.asset_id
+            Asset.id == TrackingSessionAsset.asset_id
         )
         .filter(
-            TrackingSessionAsset.tracking_session_id
-            == tracking_session_id
+            TrackingSessionAsset.tracking_session_id == tracking_session_id
         )
         .all()
     )
@@ -671,10 +614,6 @@ def get_tracking_session_details(
     }
 
 
-
-from sqlalchemy import func
-
-
 def get_tracking_sessions(
     db: Session,
     current_user,
@@ -683,6 +622,9 @@ def get_tracking_sessions(
     status: str | None = None,
     user_id: str | None = None,
 ):
+    """
+    Get paginated list of tracking sessions with filters
+    """
 
     query = (
         db.query(
@@ -702,8 +644,7 @@ def get_tracking_sessions(
     if current_user["role"] != "ADMIN":
 
         query = query.filter(
-            TrackingSession.client_id ==
-            current_user["client_id"]
+            TrackingSession.client_id == current_user["client_id"]
         )
 
     # -----------------------------------
@@ -745,8 +686,7 @@ def get_tracking_sessions(
                 TrackingSessionAsset
             )
             .filter(
-                TrackingSessionAsset.tracking_session_id ==
-                session.id
+                TrackingSessionAsset.tracking_session_id == session.id
             )
             .count()
         )
@@ -782,16 +722,6 @@ def get_tracking_sessions(
     }
 
 
-from datetime import datetime
-
-from fastapi import HTTPException
-
-from sqlalchemy.orm import Session
-
-from app.models.asset import Asset
-from app.models.gps_logs import GPSLog
-
-
 def get_tracking_history(
     db: Session,
     asset_id: str,
@@ -800,6 +730,9 @@ def get_tracking_history(
     end_date: datetime | None = None,
     limit: int = 1000
 ):
+    """
+    Get GPS history for a specific asset
+    """
 
     asset = (
         db.query(Asset)
