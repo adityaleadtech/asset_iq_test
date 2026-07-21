@@ -22,6 +22,7 @@ from app.utils.qr import generate_asset_qr
 from datetime import datetime, timezone
 import cloudinary.uploader
 from io import BytesIO
+from app.models.clients import Client
 
 import barcode
 import cloudinary.uploader
