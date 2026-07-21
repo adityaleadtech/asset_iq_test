@@ -44,6 +44,7 @@ class TrackingUpdateRequest(BaseModel):
 
     accuracy: Optional[Decimal] = None
     speed: Optional[Decimal] = None
+    recorded_at: datetime = None
 
 
 # ==========================================================
