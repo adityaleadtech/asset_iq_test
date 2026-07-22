@@ -1,293 +1,617 @@
-# app/routers/tracking.py
+# app/services/tracking.py
 
-from datetime import datetime
-from typing import Optional
-from enum import Enum
-
-from fastapi import APIRouter, Depends, Query, status
+import uuid
+from datetime import datetime, timezone
+from collections import defaultdict
+from typing import List, Optional, Dict, Any
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func, and_, or_
 
-from app.config.dependencies import (
-    get_db,
-    get_current_user,
-)
+from app.models.asset import Asset
+from app.models.trackingsession import TrackingSession
+from app.models.trackingsessionasset import TrackingSessionAsset
+from app.models.gpslog import GPSLog
+from app.models.user import User
 
 from app.schemas.tracking import (
     StartTrackingRequest,
     StartTrackingResponse,
-    TrackingUpdateRequest,
-    TrackingUpdateResponse,
     StopTrackingRequest,
     StopTrackingResponse,
     TrackingAssetResponse,
+    TrackingUpdateRequest,
+    TrackingUpdateResponse,
     TrackingSessionResponse,
     TrackingSessionListResponse,
-)
-
-from app.services.tracking import (
-    get_trackable_assets,
-    start_tracking,
-    update_tracking_location,
-    stop_tracking,
-    get_tracking_session_details,
-    get_tracking_sessions,
+    TrackingSessionListItem,
+    TrackingAssetDetails,
+    TrackingPathPoint,
 )
 
 
 # ==========================================================
-# Enums
+# Start Tracking
 # ==========================================================
 
-class TrackingSessionStatus(str, Enum):
-    """Tracking session status values"""
-    ACTIVE = "ACTIVE"
-    COMPLETED = "COMPLETED"
-
-
-# ==========================================================
-# Router
-# ==========================================================
-
-router = APIRouter(
-    prefix="/tracking",
-    tags=["Tracking"]
-)
-
-
-# ==========================================================
-# GET /tracking/assets
-# ==========================================================
-
-@router.get(
-    "/assets",
-    response_model=list[TrackingAssetResponse],
-    summary="Get Trackable Assets",
-    description="""
-Returns all assets that the authenticated user is allowed to track.
-
-### USER
-- Returns only assets assigned to the logged-in user.
-
-### MANAGER
-- Returns all assets belonging to the manager's department.
-
-### CLIENT_ADMIN
-- Returns all assets within the client.
-
-### ADMIN
-- Returns all assets across all clients.
-
-This endpoint is used by the mobile application to display the list of
-available assets before starting a tracking session.
-"""
-)
-def get_tracking_assets_router(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    return get_trackable_assets(db, current_user)
-
-
-# ==========================================================
-# POST /tracking/start
-# ==========================================================
-
-@router.post(
-    "/start",
-    response_model=StartTrackingResponse,
-    status_code=status.HTTP_201_CREATED,
-    response_description="Tracking session created successfully.",
-    summary="Start Asset Tracking Session",
-    description="""
-Starts a new tracking session for one or more selected assets.
-
-The mobile application first retrieves the list of available assets,
-allows the user to select multiple assets, and then calls this endpoint.
-
-The API will:
-
-- Create a new tracking session.
-- Associate all selected assets with that session.
-- Mark the selected assets as currently being tracked.
-- Prevent tracking assets that are already being tracked.
-- Prevent users from creating multiple active tracking sessions.
-
-The returned `tracking_session_id` must be used for all subsequent
-tracking update requests.
-"""
-)
-def start_tracking_router(
+def start_tracking(
+    db: Session,
     payload: StartTrackingRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return start_tracking(db, payload, current_user)
+    current_user: Dict[str, Any]
+) -> StartTrackingResponse:
+    """
+    Starts a tracking session for the selected assets.
+    """
+    # =====================================
+    # Prevent Multiple Active Sessions
+    # =====================================
+    existing_session = (
+        db.query(TrackingSession)
+        .filter(
+            TrackingSession.started_by == current_user["id"],
+            TrackingSession.status == "ACTIVE"
+        )
+        .first()
+    )
 
+    if existing_session:
+        raise HTTPException(
+            status_code=400,
+            detail="You already have an active tracking session."
+        )
 
-# ==========================================================
-# POST /tracking/update
-# ==========================================================
+    # =====================================
+    # Validate Assets
+    # =====================================
+    assets = (
+        db.query(Asset)
+        .filter(
+            Asset.id.in_(payload.asset_ids),
+            Asset.client_id == current_user["client_id"],
+            Asset.is_active == True
+        )
+        .all()
+    )
 
-@router.post(
-    "/update",
-    response_model=TrackingUpdateResponse,
-    summary="Update Asset GPS Location",
-    description="""
-Updates the live GPS location of a single tracked asset.
+    if len(assets) != len(payload.asset_ids):
+        raise HTTPException(
+            status_code=404,
+            detail="One or more assets were not found."
+        )
 
-The mobile application should call this endpoint every few seconds
-for each tracked asset.
+    # =====================================
+    # Verify Asset Assignment
+    # =====================================
+    for asset in assets:
+        if asset.assigned_to_user_id != current_user["id"]:
+            raise HTTPException(
+                status_code=403,
+                detail=f"You are not assigned to asset '{asset.name}'."
+            )
 
-The API will:
+        if asset.is_tracking:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Asset '{asset.name}' is already being tracked."
+            )
 
-- Validate the tracking session is active
-- Verify the asset belongs to the session
-- Store the GPS point in history
-- Update the asset's latest location
-- Record altitude, speed, heading, and accuracy when provided
+    # =====================================
+    # Create Tracking Session
+    # =====================================
+    session = TrackingSession(
+        id=str(uuid.uuid4()),
+        client_id=current_user["client_id"],
+        started_by=current_user["id"],
+        status="ACTIVE"
+    )
 
-This endpoint should be called automatically by the mobile app
-during active tracking.
-"""
-)
-def update_tracking_router(
-    payload: TrackingUpdateRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return update_tracking_location(db, payload, current_user)
+    db.add(session)
+    db.flush()
 
+    # =====================================
+    # Map Assets
+    # =====================================
+    for asset in assets:
+        mapping = TrackingSessionAsset(
+            id=str(uuid.uuid4()),
+            tracking_session_id=session.id,
+            asset_id=asset.id
+        )
 
-# ==========================================================
-# POST /tracking/stop
-# ==========================================================
+        db.add(mapping)
 
-@router.post(
-    "/stop",
-    response_model=StopTrackingResponse,
-    summary="Stop Asset Tracking Session",
-    description="""
-Stops an active tracking session.
+        asset.is_tracking = True
+        asset.current_tracking_session_id = session.id
 
-The API will:
+    db.commit()
+    db.refresh(session)
 
-- Mark the tracking session as COMPLETED
-- Record the session end time
-- Remove all assets from active tracking
-- Mark assets as no longer being tracked
-
-Once stopped, no further location updates can be submitted using the
-same tracking session.
-"""
-)
-def stop_tracking_router(
-    payload: StopTrackingRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return stop_tracking(db, payload, current_user)
-
-
-# ==========================================================
-# GET /tracking/sessions
-# ==========================================================
-
-@router.get(
-    "/sessions",
-    response_model=TrackingSessionListResponse,
-    summary="List Tracking Sessions",
-    description="""
-Returns a paginated list of tracking sessions.
-
-This endpoint powers the history screen where users can browse
-past and active tracking sessions.
-
-Supports filtering by:
-
-- Status (ACTIVE / COMPLETED)
-- User who started the session
-- Pagination
-
-### Role-Based Access
-
-**Platform Admin:**
-Can view sessions for all clients.
-
-**Client Admin:**
-Can view all sessions within their client.
-
-**Manager:**
-Can view sessions belonging to their department.
-
-**User:**
-Can view their own tracking sessions only.
-"""
-)
-def get_tracking_sessions_router(
-    page: int = Query(1, ge=1, description="Page number"),
-    size: int = Query(20, ge=1, le=100, description="Items per page"),
-    status: Optional[TrackingSessionStatus] = Query(None, description="Filter by session status"),
-    user_id: Optional[str] = Query(None, description="Filter by user who started the session"),
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return get_tracking_sessions(
-        db=db,
-        current_user=current_user,
-        page=page,
-        size=size,
-        status=status.value if status else None,
-        user_id=user_id,
+    return StartTrackingResponse(
+        tracking_session_id=session.id,
+        status=session.status,
+        started_at=session.started_at,
+        message=f"Tracking started for {len(assets)} assets."
     )
 
 
 # ==========================================================
-# GET /tracking/sessions/{tracking_session_id}
+# Update GPS Location
 # ==========================================================
 
-@router.get(
-    "/sessions/{tracking_session_id}",
-    response_model=TrackingSessionResponse,
-    summary="Get Tracking Session",
-    description="""
-Returns the complete tracking session with live location and path history.
+def update_tracking_location(
+    db: Session,
+    payload: TrackingUpdateRequest,
+    current_user: Dict[str, Any]
+) -> TrackingUpdateResponse:
+    """
+    Updates the live GPS location for a specific asset in the tracking session.
+    """
+    # =====================================
+    # Validate Tracking Session
+    # =====================================
+    session = (
+        db.query(TrackingSession)
+        .filter(
+            TrackingSession.id == payload.tracking_session_id,
+            TrackingSession.started_by == current_user["id"],
+            TrackingSession.status == "ACTIVE"
+        )
+        .first()
+    )
 
-This is the **primary map endpoint** that powers both:
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail="Active tracking session not found."
+        )
 
-- **Live Tracking** - Displays current location of all assets with markers
-- **Route Playback** - Shows complete GPS path history as polylines
+    # =====================================
+    # Validate Asset is in this Session
+    # =====================================
+    mapping = (
+        db.query(TrackingSessionAsset)
+        .filter(
+            TrackingSessionAsset.tracking_session_id == payload.tracking_session_id,
+            TrackingSessionAsset.asset_id == payload.asset_id
+        )
+        .first()
+    )
 
-The response includes:
+    if not mapping:
+        raise HTTPException(
+            status_code=404,
+            detail="Asset is not part of this tracking session."
+        )
 
-- Session information (status, timestamps)
-- User who started the session
-- For each asset:
-  - Current location (latest GPS point)
-  - Complete GPS path (all historical points)
-  - Asset details (name, serial number, asset tag)
+    # =====================================
+    # Get the Asset
+    # =====================================
+    asset = (
+        db.query(Asset)
+        .filter(
+            Asset.id == payload.asset_id,
+            Asset.client_id == current_user["client_id"]
+        )
+        .first()
+    )
 
-### Typical Flow
+    if not asset:
+        raise HTTPException(
+            status_code=404,
+            detail="Asset not found."
+        )
 
-1. User selects a session from the list (`GET /tracking/sessions`)
-2. Frontend calls this endpoint with the session ID
-3. Displays all assets on map with:
-   - **Markers** at current location
-   - **Polylines** showing the complete path
-   - **Session metadata** in the UI
+    # =====================================
+    # Create GPS Log
+    # =====================================
+    timestamp = payload.recorded_at or datetime.now(timezone.utc)
 
-### Role-Based Access
+    gps_log = GPSLog(
+        id=str(uuid.uuid4()),
+        tracking_session_id=session.id,
+        asset_id=asset.id,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        accuracy=payload.accuracy,
+        altitude=payload.altitude,
+        speed=payload.speed,
+        heading=payload.heading,
+        recorded_at=timestamp
+    )
+    db.add(gps_log)
 
-**Platform Admin:** Can access any session
-**Client Admin / Manager / User:** Can only access sessions within their client
-"""
-)
-def get_tracking_session_details_router(
+    # =====================================
+    # Update Live Location on Asset
+    # =====================================
+    asset.current_latitude = payload.latitude
+    asset.current_longitude = payload.longitude
+    asset.last_scanned_at = timestamp
+
+    db.commit()
+
+    return TrackingUpdateResponse(
+        message="GPS data recorded successfully.",
+        tracking_session_id=session.id,
+        asset_id=asset.id,
+        recorded_at=timestamp
+    )
+
+
+# ==========================================================
+# Stop Tracking
+# ==========================================================
+
+def stop_tracking(
+    db: Session,
+    payload: StopTrackingRequest,
+    current_user: Dict[str, Any]
+) -> StopTrackingResponse:
+    """
+    Stops an active tracking session.
+    """
+    # =====================================
+    # Validate Session
+    # =====================================
+    session = (
+        db.query(TrackingSession)
+        .filter(
+            TrackingSession.id == payload.tracking_session_id,
+            TrackingSession.started_by == current_user["id"],
+            TrackingSession.status == "ACTIVE"
+        )
+        .first()
+    )
+
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail="Active tracking session not found."
+        )
+
+    # =====================================
+    # Stop Session
+    # =====================================
+    session.status = "COMPLETED"
+    session.ended_at = datetime.now(timezone.utc)
+
+    # =====================================
+    # Get Tracked Assets
+    # =====================================
+    tracked_assets = (
+        db.query(TrackingSessionAsset)
+        .filter(
+            TrackingSessionAsset.tracking_session_id == session.id
+        )
+        .all()
+    )
+
+    asset_ids = [
+        tracked.asset_id
+        for tracked in tracked_assets
+    ]
+
+    if asset_ids:
+        assets = (
+            db.query(Asset)
+            .filter(
+                Asset.id.in_(asset_ids)
+            )
+            .all()
+        )
+
+        for asset in assets:
+            asset.is_tracking = False
+            asset.current_tracking_session_id = None
+
+    db.commit()
+
+    return StopTrackingResponse(
+        message="Tracking stopped successfully.",
+        tracking_session_id=session.id,
+        ended_at=session.ended_at
+    )
+
+
+# ==========================================================
+# Get Trackable Assets
+# ==========================================================
+
+def get_trackable_assets(
+    db: Session,
+    current_user: Dict[str, Any]
+) -> List[TrackingAssetResponse]:
+    """
+    Returns assets available for tracking.
+    """
+    role = current_user["role"]
+
+    # =====================================
+    # USER
+    # =====================================
+    if role == "USER":
+        assets = (
+            db.query(Asset)
+            .filter(
+                Asset.client_id == current_user["client_id"],
+                Asset.assigned_to_user_id == current_user["id"],
+                Asset.is_active == True
+            )
+            .all()
+        )
+
+    # =====================================
+    # MANAGER
+    # =====================================
+    elif role == "MANAGER":
+        assets = (
+            db.query(Asset)
+            .filter(
+                Asset.client_id == current_user["client_id"],
+                Asset.department_id == current_user["department_id"],
+                Asset.is_active == True
+            )
+            .all()
+        )
+
+    # =====================================
+    # CLIENT ADMIN
+    # =====================================
+    elif role == "CLIENT_ADMIN":
+        assets = (
+            db.query(Asset)
+            .filter(
+                Asset.client_id == current_user["client_id"],
+                Asset.is_active == True
+            )
+            .all()
+        )
+
+    # =====================================
+    # PLATFORM ADMIN
+    # =====================================
+    else:
+        assets = (
+            db.query(Asset)
+            .filter(
+                Asset.is_active == True
+            )
+            .all()
+        )
+
+    return [
+        TrackingAssetResponse(
+            asset_id=asset.id,
+            asset_name=asset.name,
+            serial_number=asset.serial_number,
+            asset_tag=getattr(asset, "asset_tag", None),
+        )
+        for asset in assets
+    ]
+
+
+# ==========================================================
+# Get Session Details (Live + Path) - SINGLE API
+# ==========================================================
+
+def get_tracking_session_details(
+    db: Session,
     tracking_session_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    return get_tracking_session_details(
-        db,
-        tracking_session_id,
-        current_user
+    current_user: Dict[str, Any]
+) -> TrackingSessionResponse:
+    """
+    Get detailed session information with live location and path history.
+    This is the SINGLE API for both live tracking and historical path.
+    """
+    # =====================================
+    # Get Session
+    # =====================================
+    session = (
+        db.query(TrackingSession)
+        .filter(
+            TrackingSession.id == tracking_session_id
+        )
+        .first()
+    )
+
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail="Tracking session not found."
+        )
+
+    # Platform Admin can view everything
+    if current_user["role"] != "ADMIN":
+        if session.client_id != current_user["client_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied."
+            )
+
+    # =====================================
+    # Get User who started the session
+    # =====================================
+    user = (
+        db.query(User)
+        .filter(
+            User.id == session.started_by
+        )
+        .first()
+    )
+
+    # =====================================
+    # Get Assets in this session with their GPS logs
+    # =====================================
+    mappings = (
+        db.query(
+            TrackingSessionAsset,
+            Asset
+        )
+        .join(
+            Asset,
+            Asset.id == TrackingSessionAsset.asset_id
+        )
+        .filter(
+            TrackingSessionAsset.tracking_session_id == tracking_session_id
+        )
+        .all()
+    )
+
+    # =====================================
+    # Get all GPS logs for this session
+    # =====================================
+    gps_logs = (
+        db.query(GPSLog)
+        .filter(
+            GPSLog.tracking_session_id == tracking_session_id
+        )
+        .order_by(
+            GPSLog.recorded_at.asc()
+        )
+        .all()
+    )
+
+    # =====================================
+    # Group GPS logs by asset
+    # =====================================
+    gps_map = defaultdict(list)
+    for log in gps_logs:
+        gps_map[log.asset_id].append(log)
+
+    # =====================================
+    # Build Asset Details with Path
+    # =====================================
+    asset_details = []
+
+    for mapping, asset in mappings:
+        asset_gps = gps_map.get(asset.id, [])
+        
+        # Latest GPS for current location
+        latest_gps = asset_gps[-1] if asset_gps else None
+
+        # Build path
+        path_points = [
+            TrackingPathPoint(
+                latitude=log.latitude,
+                longitude=log.longitude,
+                recorded_at=log.recorded_at
+            )
+            for log in asset_gps
+        ]
+
+        asset_details.append(
+            TrackingAssetDetails(
+                asset_id=asset.id,
+                asset_name=asset.name,
+                serial_number=asset.serial_number,
+                asset_tag=getattr(asset, "asset_tag", None),
+                current_latitude=latest_gps.latitude if latest_gps else None,
+                current_longitude=latest_gps.longitude if latest_gps else None,
+                last_updated=latest_gps.recorded_at if latest_gps else None,
+                path=path_points
+            )
+        )
+
+    # =====================================
+    # Build Response
+    # =====================================
+    return TrackingSessionResponse(
+        tracking_session_id=session.id,
+        status=session.status,
+        started_at=session.started_at,
+        ended_at=session.ended_at,
+        tracked_by_user_id=user.id,
+        tracked_by_name=user.full_name,
+        assets=asset_details
+    )
+
+
+# ==========================================================
+# Get Tracking Sessions List
+# ==========================================================
+
+def get_tracking_sessions(
+    db: Session,
+    current_user: Dict[str, Any],
+    page: int = 1,
+    size: int = 20,
+    status: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> TrackingSessionListResponse:
+    """
+    Get paginated list of tracking sessions with filters.
+    """
+    query = (
+        db.query(
+            TrackingSession,
+            User
+        )
+        .join(
+            User,
+            User.id == TrackingSession.started_by
+        )
+    )
+
+    # =====================================
+    # Client Restriction
+    # =====================================
+    if current_user["role"] != "ADMIN":
+        query = query.filter(
+            TrackingSession.client_id == current_user["client_id"]
+        )
+
+    # =====================================
+    # Filters
+    # =====================================
+    if status:
+        query = query.filter(
+            TrackingSession.status == status
+        )
+
+    if user_id:
+        query = query.filter(
+            TrackingSession.started_by == user_id
+        )
+
+    total = query.count()
+
+    rows = (
+        query
+        .order_by(
+            TrackingSession.started_at.desc()
+        )
+        .offset(
+            (page - 1) * size
+        )
+        .limit(size)
+        .all()
+    )
+
+    items = []
+
+    for session, user in rows:
+        tracked_assets = (
+            db.query(TrackingSessionAsset)
+            .filter(
+                TrackingSessionAsset.tracking_session_id == session.id
+            )
+            .count()
+        )
+
+        items.append(
+            TrackingSessionListItem(
+                tracking_session_id=session.id,
+                tracked_by_user_id=user.id,
+                tracked_by_name=user.full_name,
+                status=session.status,
+                started_at=session.started_at,
+                ended_at=session.ended_at,
+                tracked_assets=tracked_assets
+            )
+        )
+
+    return TrackingSessionListResponse(
+        total=total,
+        page=page,
+        size=size,
+        items=items
     )
