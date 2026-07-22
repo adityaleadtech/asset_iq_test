@@ -969,9 +969,9 @@ class AuditService:
 
                 expected_location_id=asset.location_id,
 
-                expected_latitude=asset.latitude,
+                expected_latitude=asset.current_latitude,
 
-                expected_longitude=asset.longitude,
+                expected_longitude=asset.current_longitude,
 
                 status=AuditResultStatus.PENDING
 
