@@ -12,6 +12,8 @@ from sqlalchemy import (
     ForeignKey
 )
 from sqlalchemy.orm import relationship
+
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.config.database import Base
@@ -125,4 +127,15 @@ class AuditPlan(Base):
     creator = relationship(
     "User",
     foreign_keys=[created_by]
+)
+
+    audit_sessions = relationship(
+    "AuditSession",
+    back_populates="audit_plan",
+    cascade="all, delete-orphan"
+)
+    audit_targets = relationship(
+    "AuditTarget",
+    back_populates="audit_plan",
+    cascade="all, delete-orphan"
 )

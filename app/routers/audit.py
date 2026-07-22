@@ -62,7 +62,7 @@ def create_audit(
     - Client Admin sees audits of their client.
     """
 )
-def get_audits(
+def get_audits_router(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     page: int = Query(1, ge=1, description="Page number"),

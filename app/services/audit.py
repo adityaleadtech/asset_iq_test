@@ -49,7 +49,7 @@ class AuditService:
             # Resolve Client
             # ---------------------------------
 
-            if current_user.role == "PLATFORM_ADMIN":
+            if current_user["role"] == "PLATFORM_ADMIN":
 
                 if not payload.client_id:
                     raise HTTPException(
@@ -59,9 +59,9 @@ class AuditService:
 
                 client_id = payload.client_id
 
-            elif current_user.role == "CLIENT_ADMIN":
+            elif current_user["role"] == "CLIENT_ADMIN":
 
-                client_id = current_user.client_id
+                client_id = current_user["client_id"]
 
             else:
                 raise HTTPException(
@@ -272,7 +272,7 @@ class AuditService:
 
                 status=AuditPlanStatus.ACTIVE,
 
-                created_by=current_user.id,
+                created_by=current_user["id"],
 
                 is_active=True,
             )
@@ -392,20 +392,20 @@ class AuditService:
         # Role Filter
         # ---------------------------------
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
-        elif current_user.role == "AUDITOR":
+        elif current_user["role"] == "AUDITOR":
 
             query = query.filter(
-                AuditPlan.auditor_id == current_user.id
+                AuditPlan.auditor_id == current_user["id"]
             )
 
         else:
@@ -516,20 +516,20 @@ class AuditService:
             )
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
-        elif current_user.role == "AUDITOR":
+        elif current_user["role"] == "AUDITOR":
 
             query = query.filter(
-                AuditPlan.auditor_id == current_user.id
+                AuditPlan.auditor_id == current_user["id"]
             )
 
         else:
@@ -621,14 +621,14 @@ class AuditService:
             AuditPlan.is_active == True
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
         else:
@@ -777,14 +777,14 @@ class AuditService:
             AuditPlan.is_active == True
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
         else:
@@ -840,7 +840,7 @@ class AuditService:
             db.query(AuditSession)
             .join(AuditPlan)
             .filter(
-                AuditSession.assigned_to == current_user.id,
+                AuditSession.assigned_to == current_user["id"],
                 AuditPlan.is_active == True
             )
         )
@@ -929,7 +929,7 @@ class AuditService:
             )
 
         # Check if the current user is the assigned auditor
-        if session.assigned_to != current_user.id:
+        if session.assigned_to != current_user["id"]:
 
             raise HTTPException(
                 status_code=403,
@@ -957,7 +957,7 @@ class AuditService:
 
         session.started_at = datetime.utcnow()
 
-        session.conducted_by = current_user.id
+        session.conducted_by = current_user["id"]
 
         for asset in assets:
 
@@ -1034,7 +1034,7 @@ class AuditService:
             )
 
         # Check if the current user is the assigned auditor
-        if session.assigned_to != current_user.id:
+        if session.assigned_to != current_user["id"]:
 
             raise HTTPException(
                 status_code=403,
@@ -1147,7 +1147,7 @@ class AuditService:
             )
 
         # Check if the current user is the assigned auditor
-        if session.assigned_to != current_user.id:
+        if session.assigned_to != current_user["id"]:
 
             raise HTTPException(
                 status_code=403,
@@ -1365,14 +1365,14 @@ class AuditService:
             AuditPlan.is_active == True
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
         else:
@@ -1477,20 +1477,20 @@ class AuditService:
             )
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
         else:
 
             query = query.filter(
-                AuditSession.assigned_to == current_user.id
+                AuditSession.assigned_to == current_user["id"]
             )
 
         total = query.count()
@@ -1549,36 +1549,41 @@ class AuditService:
             size=size
 
         )
+
     @staticmethod
     def get_session_assets(
-    session_id: str,
-    db: Session,
-    current_user
-):
+        session_id: str,
+        db: Session,
+        current_user
+    ):
         session = (
-        db.query(AuditSession)
-        .filter(AuditSession.id == session_id)
-        .first()
-    )
+            db.query(AuditSession)
+            .filter(AuditSession.id == session_id)
+            .first()
+        )
+        
         if not session:
             raise HTTPException(
-            status_code=404,
-            detail="Audit session not found."
-        )
-        if session.assigned_to != current_user.id:
+                status_code=404,
+                detail="Audit session not found."
+            )
+            
+        if session.assigned_to != current_user["id"]:
             raise HTTPException(
-            status_code=403,
-            detail="Permission denied."
-        )
+                status_code=403,
+                detail="Permission denied."
+            )
+            
         results = (
             db.query(AuditResult)
             .join(Asset)
             .filter(
-            AuditResult.audit_session_id == session_id
+                AuditResult.audit_session_id == session_id
+            )
+            .all()
         )
-        .all()
-    )
+        
         return [
-        AuditResultResponse.model_validate(result)
-        for result in results
-    ]
+            AuditResultResponse.model_validate(result)
+            for result in results
+        ]

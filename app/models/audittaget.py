@@ -53,3 +53,7 @@ class AuditTarget(Base):
         "AuditPlan",
         back_populates="targets"
     )
+    audit_plan = relationship(
+    "AuditPlan",
+    back_populates="audit_targets"
+)

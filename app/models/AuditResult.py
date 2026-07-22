@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func
 
 from app.config.database import Base

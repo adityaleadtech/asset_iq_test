@@ -118,29 +118,31 @@ class AuditPlanResponse(BaseModel):
 # Audit Session Response
 # ==========================================================
 
-class AuditSessionResponse(BaseModel):
+from datetime import date, datetime
+from typing import Optional, List
+from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict
+
+
+class AuditSessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
-
-    audit_plan_id: str
-
-    audit_name: str
+    id: UUID
 
     scheduled_date: date
 
-    started_at: Optional[datetime]
+    status: str
 
-    completed_at: Optional[datetime]
+    assigned_to: UUID
+
+    started_at: Optional[datetime] = None
+
+    completed_at: Optional[datetime] = None
 
     total_assets: int
 
     audited_assets: int
-
-    status: AuditSessionStatus
-
-
 # ==========================================================
 # Audit Asset Request
 # Used by Mobile App
@@ -160,6 +162,29 @@ class AuditResultRequest(BaseModel):
 
     audit_longitude: Decimal
 
+
+class MyAuditSessionResponse(BaseModel):
+    id: UUID
+
+    audit_plan_id: UUID
+
+    audit_name: str
+
+    scheduled_date: date
+
+    status: AuditSessionStatus
+
+    total_assets: int
+
+    audited_assets: int
+
+    started_at: Optional[datetime] = None
+
+    completed_at: Optional[datetime] = None
+
+    created_at: datetime
+
+    assigned_to: UUID
 # ==========================================================
 # Audit Result Response
 # ==========================================================
@@ -209,20 +234,19 @@ class AuditResultResponse(BaseModel):
 
 class AuditDashboardResponse(BaseModel):
 
+    total_audits: int
+
+    active_audits: int
+
+    completed_sessions: int
+
+    pending_sessions: int
+
+    in_progress_sessions: int
+
     total_assets: int
 
     audited_assets: int
-
-    pending_assets: int
-
-    lost_assets: int
-
-    dislocated_assets: int
-
-    damaged_assets: int
-
-    completion_percentage: float
-
 
 # ==========================================================
 # Audit Plan List Response

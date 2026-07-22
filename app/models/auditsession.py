@@ -91,3 +91,7 @@ class AuditSession(Base):
     "User",
     foreign_keys=[assigned_to]
 )
+    audit_plan = relationship(
+    "AuditPlan",
+    back_populates="audit_sessions"
+)
