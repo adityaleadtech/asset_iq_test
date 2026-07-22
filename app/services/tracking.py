@@ -5,7 +5,7 @@ from collections import defaultdict
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-
+from datetime import datetime, timezone
 from app.models.asset import Asset
 from app.models.tracking_session import TrackingSession
 from app.models.tracking_session_asset import TrackingSessionAsset
@@ -161,7 +161,6 @@ def update_tracking_location(
     )
 
     if not session:
-
         raise HTTPException(
             status_code=404,
             detail="Tracking session not found."
@@ -178,6 +177,11 @@ def update_tracking_location(
         )
         .all()
     )
+
+    # =====================================
+    # Create a single timestamp for all updates
+    # =====================================
+    timestamp = payload.recorded_at or datetime.now(timezone.utc)
 
     # =====================================
     # Update Each Asset
@@ -199,7 +203,6 @@ def update_tracking_location(
         # -------------------------------
         # Store GPS History
         # -------------------------------
-
         gps_log = GPSLog(
             id=str(uuid.uuid4()),
             tracking_session_id=session.id,
@@ -208,18 +211,16 @@ def update_tracking_location(
             longitude=payload.longitude,
             accuracy=payload.accuracy,
             speed=payload.speed,
-            recorded_at=payload.recorded_at
+            recorded_at=timestamp  # Use the same timestamp
         )
-
         db.add(gps_log)
 
         # -------------------------------
         # Update Live Location
         # -------------------------------
-
         asset.current_latitude = payload.latitude
         asset.current_longitude = payload.longitude
-        asset.last_scanned_at = payload.recorded_at
+        asset.last_scanned_at = timestamp  # Use the same timestamp
 
     db.commit()
 
