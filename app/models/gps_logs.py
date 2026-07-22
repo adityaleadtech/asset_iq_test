@@ -1,3 +1,5 @@
+# app/models/gpslog.py
+
 import uuid
 
 from sqlalchemy import (
@@ -7,9 +9,7 @@ from sqlalchemy import (
     DECIMAL,
     ForeignKey,
 )
-
 from sqlalchemy.orm import relationship
-
 from sqlalchemy.sql import func
 
 from app.config.database import Base
@@ -51,7 +51,17 @@ class GPSLog(Base):
         nullable=True
     )
 
+    altitude = Column(
+        DECIMAL(8, 2),
+        nullable=True
+    )
+
     speed = Column(
+        DECIMAL(6, 2),
+        nullable=True
+    )
+
+    heading = Column(
         DECIMAL(6, 2),
         nullable=True
     )
@@ -66,6 +76,7 @@ class GPSLog(Base):
         server_default=func.now()
     )
 
+    # Relationships
     tracking_session = relationship(
         "TrackingSession",
         back_populates="gps_logs"

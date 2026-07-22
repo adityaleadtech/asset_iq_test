@@ -1,3 +1,5 @@
+# app/models/trackingsession.py
+
 import uuid
 
 from sqlalchemy import (
@@ -7,9 +9,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
 )
-
 from sqlalchemy.orm import relationship
-
 from sqlalchemy.sql import func
 
 from app.config.database import Base
@@ -30,7 +30,7 @@ class TrackingSession(Base):
         nullable=False
     )
 
-    user_id = Column(
+    started_by = Column(
         String(36),
         ForeignKey("users.id"),
         nullable=False
@@ -63,9 +63,9 @@ class TrackingSession(Base):
         nullable=False
     )
 
+    # Relationships
     client = relationship("Client")
-
-    user = relationship("User")
+    started_by_user = relationship("User")
 
     tracked_assets = relationship(
         "TrackingSessionAsset",

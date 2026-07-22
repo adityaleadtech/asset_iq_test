@@ -1,7 +1,8 @@
+# app/schemas/tracking.py
+
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
-
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
@@ -21,14 +22,17 @@ class TrackingAssetResponse(BaseModel):
 # ==========================================================
 
 class StartTrackingRequest(BaseModel):
-    asset_ids: list[str] = Field(
+    asset_ids: List[str] = Field(
         ...,
-        min_length=1
+        min_length=1,
+        description="List of asset IDs to track"
     )
 
 
 class StartTrackingResponse(BaseModel):
     tracking_session_id: str
+    status: str = "ACTIVE"
+    started_at: datetime
     message: str
 
 
@@ -37,14 +41,25 @@ class StartTrackingResponse(BaseModel):
 # ==========================================================
 
 class TrackingUpdateRequest(BaseModel):
+    tracking_session_id: str = Field(..., description="ID of the tracking session")
+    asset_id: str = Field(..., description="ID of the asset being tracked")
+
+    latitude: Decimal = Field(..., ge=-90, le=90, description="Latitude in decimal degrees")
+    longitude: Decimal = Field(..., ge=-180, le=180, description="Longitude in decimal degrees")
+
+    accuracy: Optional[Decimal] = Field(None, ge=0, description="Accuracy in meters")
+    altitude: Optional[Decimal] = Field(None, description="Altitude in meters")
+    speed: Optional[Decimal] = Field(None, ge=0, description="Speed in km/h")
+    heading: Optional[Decimal] = Field(None, ge=0, le=360, description="Heading in degrees")
+
+    recorded_at: datetime = Field(..., description="Timestamp when GPS data was recorded")
+
+
+class TrackingUpdateResponse(BaseModel):
+    message: str = "GPS data recorded successfully"
     tracking_session_id: str
-
-    latitude: Decimal
-    longitude: Decimal
-
-    accuracy: Optional[Decimal] = None
-    speed: Optional[Decimal] = None
-    recorded_at: datetime = None
+    asset_id: str
+    recorded_at: datetime
 
 
 # ==========================================================
@@ -52,33 +67,48 @@ class TrackingUpdateRequest(BaseModel):
 # ==========================================================
 
 class StopTrackingRequest(BaseModel):
-    tracking_session_id: str
+    tracking_session_id: str = Field(..., description="ID of the tracking session to stop")
 
 
 class StopTrackingResponse(BaseModel):
     message: str
+    tracking_session_id: str
+    ended_at: datetime
 
 
 # ==========================================================
-# Session Details
+# Session Details (Single API for Live + Path)
 # ==========================================================
 
-class TrackingSessionAssetResponse(BaseModel):
+class TrackingPathPoint(BaseModel):
+    latitude: Decimal
+    longitude: Decimal
+    recorded_at: datetime
+
+
+class TrackingAssetDetails(BaseModel):
     asset_id: str
     asset_name: str
     serial_number: Optional[str] = None
+    asset_tag: Optional[str] = None
+
+    current_latitude: Optional[Decimal] = None
+    current_longitude: Optional[Decimal] = None
+    last_updated: Optional[datetime] = None
+
+    path: List[TrackingPathPoint] = Field(default_factory=list, description="Full path history for this asset")
 
 
-class TrackingSessionDetailsResponse(BaseModel):
+class TrackingSessionResponse(BaseModel):
     tracking_session_id: str
-
+    status: str
     started_at: datetime
     ended_at: Optional[datetime] = None
 
     tracked_by_user_id: str
     tracked_by_name: str
 
-    assets: list[TrackingSessionAssetResponse]
+    assets: List[TrackingAssetDetails] = Field(default_factory=list)
 
 
 # ==========================================================
@@ -87,15 +117,11 @@ class TrackingSessionDetailsResponse(BaseModel):
 
 class TrackingSessionListItem(BaseModel):
     tracking_session_id: str
-
     tracked_by_user_id: str
     tracked_by_name: str
-
     status: str
-
     started_at: datetime
     ended_at: Optional[datetime] = None
-
     tracked_assets: int
 
 
@@ -103,50 +129,18 @@ class TrackingSessionListResponse(BaseModel):
     total: int
     page: int
     size: int
-    items: list[TrackingSessionListItem]
-# ==========================================================
-# Asset History
-# ==========================================================
-
-class TrackingHistoryPoint(BaseModel):
-    latitude: Decimal
-    longitude: Decimal
-    recorded_at: datetime
-
-
-class TrackingHistoryResponse(BaseModel):
-    asset_id: str
-    asset_name: str
-
-    history: list[TrackingHistoryPoint]
+    items: List[TrackingSessionListItem]
 
 
 # ==========================================================
-# Live Tracking
+# Session Filters
 # ==========================================================
 
-class LivePathPoint(BaseModel):
-    latitude: Decimal
-    longitude: Decimal
-    recorded_at: datetime
-
-
-class LiveTrackingAsset(BaseModel):
-    tracking_session_id: str
-
-    asset_id: str
-    asset_name: str
-    serial_number: Optional[str] = None
-
-    tracked_by_user_id: str
-    tracked_by_name: str
-
-    current_latitude: Optional[Decimal] = None
-    current_longitude: Optional[Decimal] = None
-    last_updated: Optional[datetime] = None
-
-    path: list[LivePathPoint]
-
-
-class LiveTrackingResponse(BaseModel):
-    assets: list[LiveTrackingAsset]
+class TrackingSessionFilters(BaseModel):
+    client_id: Optional[str] = None
+    status: Optional[str] = Field(None, pattern="^(ACTIVE|STOPPED)$")
+    started_by_user_id: Optional[str] = None
+    started_after: Optional[datetime] = None
+    started_before: Optional[datetime] = None
+    page: int = Field(1, ge=1)
+    limit: int = Field(20, ge=1, le=100)

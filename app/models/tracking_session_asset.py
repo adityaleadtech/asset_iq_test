@@ -1,3 +1,5 @@
+# app/models/trackingsessionasset.py
+
 import uuid
 
 from sqlalchemy import (
@@ -6,9 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
 )
-
 from sqlalchemy.orm import relationship
-
 from sqlalchemy.sql import func
 
 from app.config.database import Base
@@ -43,9 +43,10 @@ class TrackingSessionAsset(Base):
         server_default=func.now()
     )
 
+    # Relationships
     tracking_session = relationship(
         "TrackingSession",
         back_populates="tracked_assets"
     )
 
-    asset = relationship("Asset")   
+    asset = relationship("Asset")
