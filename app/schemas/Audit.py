@@ -143,6 +143,7 @@ class AuditSessionResponse(BaseModel):
     total_assets: int
 
     audited_assets: int
+    tracking_session_id: str | None = None
 # ==========================================================
 # Audit Asset Request
 # Used by Mobile App
