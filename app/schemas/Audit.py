@@ -84,36 +84,26 @@ class AuditPlanUpdate(BaseModel):
 # ==========================================================
 # Audit Plan Response
 # ==========================================================
+from typing import List, Optional
 
 class AuditPlanResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-
     name: str
-
     description: Optional[str]
-
     auditor_id: str
-
     auditor_name: str
-
     frequency_unit: AuditFrequencyUnit
-
     frequency_interval: int
-
     start_date: date
-
     end_date: Optional[date]
-
     next_run_date: date
-
     status: AuditPlanStatus
-
     created_at: datetime
 
-
+    sessions: List[AuditSessionResponse] = []
 # ==========================================================
 # Audit Session Response
 # ==========================================================
