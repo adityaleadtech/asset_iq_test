@@ -31,7 +31,7 @@ class AuditTarget(Base):
     target_type = Column(
         Enum(
             "LOCATION",
-            "DEPARTMENT",
+            "DEPARTMENT", 
             "CATEGORY",
             "ASSET",
             name="audit_target_type"

@@ -1,5 +1,3 @@
-# app/services/tracking.py
-
 import uuid
 from datetime import datetime, timezone
 from collections import defaultdict
@@ -9,8 +7,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 
 from app.models.asset import Asset
-from app.models.tracking_session_asset import TrackingSession
-from app.models.tracking_session_asset import TrackingSessionAsset
+from app.models.tracking_session import TrackingSession          # ✅ Fixed
+from app.models.tracking_session_asset import TrackingSessionAsset  # ✅ Fixed
 from app.models.gps_logs import GPSLog
 from app.models.users import User
 
@@ -28,7 +26,6 @@ from app.schemas.tracking import (
     TrackingAssetDetails,
     TrackingPathPoint,
 )
-
 
 # ==========================================================
 # Start Tracking
