@@ -88,18 +88,22 @@ class TrackingSessionDetailsResponse(BaseModel):
 class TrackingSessionListItem(BaseModel):
     tracking_session_id: str
 
+    tracked_by_user_id: str
+    tracked_by_name: str
+
+    status: str
+
     started_at: datetime
     ended_at: Optional[datetime] = None
 
-    tracked_by_name: str
-
-    asset_count: int
+    tracked_assets: int
 
 
 class TrackingSessionListResponse(BaseModel):
-    sessions: list[TrackingSessionListItem]
-
-
+    total: int
+    page: int
+    size: int
+    items: list[TrackingSessionListItem]
 # ==========================================================
 # Asset History
 # ==========================================================
