@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 
 from app.models.asset import Asset
-from app.models.trackingsession import TrackingSession
-from app.models.trackingsessionasset import TrackingSessionAsset
-from app.models.gpslog import GPSLog
-from app.models.user import User
+from app.models.tracking_session_asset import TrackingSession
+from app.models.tracking_session_asset import TrackingSessionAsset
+from app.models.gps_logs import GPSLog
+from app.models.users import User
 
 from app.schemas.tracking import (
     StartTrackingRequest,
