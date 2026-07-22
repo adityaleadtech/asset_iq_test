@@ -1,6 +1,10 @@
-from datetime import datetime
+# app/routers/tracking.py
 
-from fastapi import APIRouter, Depends
+from datetime import datetime
+from typing import Optional
+from enum import Enum
+
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.config.dependencies import (
@@ -9,31 +13,50 @@ from app.config.dependencies import (
 )
 
 from app.schemas.tracking import (
-    LiveTrackingResponse,
     StartTrackingRequest,
-    TrackingAssetResponse,
-    TrackingHistoryResponse,
-    TrackingSessionDetailsResponse,
-    TrackingSessionListResponse,
+    StartTrackingResponse,
     TrackingUpdateRequest,
+    TrackingUpdateResponse,
     StopTrackingRequest,
+    StopTrackingResponse,
+    TrackingAssetResponse,
+    TrackingSessionResponse,
+    TrackingSessionListResponse,
 )
+
 from app.services.tracking import (
-    get_live_tracking_assets,
     get_trackable_assets,
-    get_tracking_history,
-    get_tracking_session_details,
-    get_tracking_sessions,
     start_tracking,
     update_tracking_location,
     stop_tracking,
+    get_tracking_session_details,
+    get_tracking_sessions,
 )
+
+
+# ==========================================================
+# Enums
+# ==========================================================
+
+class TrackingSessionStatus(str, Enum):
+    """Tracking session status values"""
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+
+
+# ==========================================================
+# Router
+# ==========================================================
 
 router = APIRouter(
     prefix="/tracking",
     tags=["Tracking"]
 )
 
+
+# ==========================================================
+# GET /tracking/assets
+# ==========================================================
 
 @router.get(
     "/assets",
@@ -62,14 +85,18 @@ def get_tracking_assets_router(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    return get_trackable_assets(
-        db,
-        current_user
-    )
+    return get_trackable_assets(db, current_user)
 
+
+# ==========================================================
+# POST /tracking/start
+# ==========================================================
 
 @router.post(
     "/start",
+    response_model=StartTrackingResponse,
+    status_code=status.HTTP_201_CREATED,
+    response_description="Tracking session created successfully.",
     summary="Start Asset Tracking Session",
     description="""
 Starts a new tracking session for one or more selected assets.
@@ -94,34 +121,33 @@ def start_tracking_router(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return start_tracking(
-        db,
-        payload,
-        current_user,
-    )
+    return start_tracking(db, payload, current_user)
 
+
+# ==========================================================
+# POST /tracking/update
+# ==========================================================
 
 @router.post(
     "/update",
-    summary="Update Live Asset Location",
+    response_model=TrackingUpdateResponse,
+    summary="Update Asset GPS Location",
     description="""
-Updates the live GPS location of every asset associated with an active
-tracking session.
+Updates the live GPS location of a single tracked asset.
 
-This endpoint is intended to be called automatically by the mobile
-application while tracking is active.
-
-Recommended update interval:
-- Every 2–5 seconds.
+The mobile application should call this endpoint every few seconds
+for each tracked asset.
 
 The API will:
 
-- Validate the tracking session.
-- Store GPS history.
-- Update the latest latitude and longitude of every tracked asset.
-- Update the asset's last scanned timestamp.
+- Validate the tracking session is active
+- Verify the asset belongs to the session
+- Store the GPS point in history
+- Update the asset's latest location
+- Record altitude, speed, heading, and accuracy when provided
 
-This endpoint should not be called manually by users.
+This endpoint should be called automatically by the mobile app
+during active tracking.
 """
 )
 def update_tracking_router(
@@ -129,25 +155,26 @@ def update_tracking_router(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return update_tracking_location(
-        db,
-        payload,
-        current_user,
-    )
+    return update_tracking_location(db, payload, current_user)
 
+
+# ==========================================================
+# POST /tracking/stop
+# ==========================================================
 
 @router.post(
     "/stop",
+    response_model=StopTrackingResponse,
     summary="Stop Asset Tracking Session",
     description="""
 Stops an active tracking session.
 
 The API will:
 
-- Mark the tracking session as stopped.
-- Record the session end time.
-- Remove all selected assets from active tracking.
-- Mark assets as no longer being tracked.
+- Mark the tracking session as COMPLETED
+- Record the session end time
+- Remove all assets from active tracking
+- Mark assets as no longer being tracked
 
 Once stopped, no further location updates can be submitted using the
 same tracking session.
@@ -158,80 +185,12 @@ def stop_tracking_router(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return stop_tracking(
-        db,
-        payload,
-        current_user,
-    )
+    return stop_tracking(db, payload, current_user)
 
 
-@router.get(
-    "/live",
-    response_model=LiveTrackingResponse,
-    summary="Get Live Asset Tracking",
-    description="""
-Returns all assets that are currently being tracked.
-
-Each asset contains:
-
-• Current GPS location
-
-• Complete GPS path
-
-• Tracking session
-
-• Tracking user
-
-Used by the live dashboard to render
-all markers and polylines on a single map.
-"""
-)
-def get_live_tracking_assets_router(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-
-    return get_live_tracking_assets(
-        db,
-        current_user
-    )
-
-@router.get(
-    "/session/{tracking_session_id}",
-    response_model=TrackingSessionDetailsResponse,
-    summary="Get Tracking Session Details",
-    description="""
-Returns complete information about a tracking session.
-
-The response includes:
-
-• Tracking session information
-
-• User who started the session
-
-• Session status
-
-• Start and end time
-
-• Every asset included in that session
-
-This endpoint is primarily used by the web dashboard and audit screens.
-"""
-)
-def get_tracking_session_details_router(
-    tracking_session_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-
-    return get_tracking_session_details(
-        db,
-        tracking_session_id,
-        current_user
-    )
-
-
-
+# ==========================================================
+# GET /tracking/sessions
+# ==========================================================
 
 @router.get(
     "/sessions",
@@ -240,108 +199,95 @@ def get_tracking_session_details_router(
     description="""
 Returns a paginated list of tracking sessions.
 
+This endpoint powers the history screen where users can browse
+past and active tracking sessions.
+
 Supports filtering by:
 
-• Tracking Status
+- Status (ACTIVE / COMPLETED)
+- User who started the session
+- Pagination
 
-• User
+### Role-Based Access
 
-• Pagination
-
-Platform Admin:
+**Platform Admin:**
 Can view sessions for all clients.
 
-Client Admin:
+**Client Admin:**
 Can view all sessions within their client.
 
-Manager:
-Can view sessions belonging to their client.
+**Manager:**
+Can view sessions belonging to their department.
 
-User:
-Can view their own tracking sessions.
+**User:**
+Can view their own tracking sessions only.
 """
 )
 def get_tracking_sessions_router(
-    page: int = 1,
-    size: int = 20,
-    status: str | None = None,
-    user_id: str | None = None,
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(20, ge=1, le=100, description="Items per page"),
+    status: Optional[TrackingSessionStatus] = Query(None, description="Filter by session status"),
+    user_id: Optional[str] = Query(None, description="Filter by user who started the session"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-
     return get_tracking_sessions(
         db=db,
         current_user=current_user,
         page=page,
         size=size,
-        status=status,
+        status=status.value if status else None,
         user_id=user_id,
     )
 
 
-
+# ==========================================================
+# GET /tracking/sessions/{tracking_session_id}
+# ==========================================================
 
 @router.get(
-    "/history/{asset_id}",
-    response_model=TrackingHistoryResponse,
-    summary="Get Asset Tracking History",
+    "/sessions/{tracking_session_id}",
+    response_model=TrackingSessionResponse,
+    summary="Get Tracking Session",
     description="""
-Returns the historical GPS movement of an asset.
+Returns the complete tracking session with live location and path history.
 
-Supports optional filtering by:
+This is the **primary map endpoint** that powers both:
 
-• Start Date
+- **Live Tracking** - Displays current location of all assets with markers
+- **Route Playback** - Shows complete GPS path history as polylines
 
-• End Date
+The response includes:
 
-• Maximum Number of Records
+- Session information (status, timestamps)
+- User who started the session
+- For each asset:
+  - Current location (latest GPS point)
+  - Complete GPS path (all historical points)
+  - Asset details (name, serial number, asset tag)
 
-Typical Uses:
+### Typical Flow
 
-• Route Playback
+1. User selects a session from the list (`GET /tracking/sessions`)
+2. Frontend calls this endpoint with the session ID
+3. Displays all assets on map with:
+   - **Markers** at current location
+   - **Polylines** showing the complete path
+   - **Session metadata** in the UI
 
-• Audit Reports
+### Role-Based Access
 
-• Movement Analysis
-
-• Asset Timeline
-
-Platform Admin:
-Can access every asset.
-
-Client Admin / Manager / User:
-Can access assets belonging to their client.
+**Platform Admin:** Can access any session
+**Client Admin / Manager / User:** Can only access sessions within their client
 """
 )
-def get_tracking_history_router(
-
-    asset_id: str,
-
-    start_date: datetime | None = None,
-
-    end_date: datetime | None = None,
-
-    limit: int = 1000,
-
+def get_tracking_session_details_router(
+    tracking_session_id: str,
     db: Session = Depends(get_db),
-
     current_user=Depends(get_current_user),
-
 ):
-
-    return get_tracking_history(
-
-        db=db,
-
-        asset_id=asset_id,
-
-        current_user=current_user,
-
-        start_date=start_date,
-
-        end_date=end_date,
-
-        limit=limit
-
+    return get_tracking_session_details(
+        db,
+        tracking_session_id,
+        current_user
     )
