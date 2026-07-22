@@ -16,7 +16,7 @@ from app.routers import auth, asset, asset_categories, asset_type, dashboard, ma
 from app.routers.authentication import router as authentication_router
 from app.routers.profile import router as profile_router
 from app.routers.tracking import router as tracking_router
-
+from app.routers.audit import router as audit_router
 
 
 app = FastAPI()
@@ -55,6 +55,7 @@ api_router.include_router(manager.router)
 api_router.include_router(authentication_router)
 api_router.include_router(map_router)
 api_router.include_router(profile_router)
+api_router.include_router(audit_router)
 
 app.include_router(api_router)
 

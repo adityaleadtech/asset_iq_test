@@ -9,6 +9,7 @@ from sqlalchemy import or_
 
 from app.models.Audit_trail import AuditTrail
 from app.models.asset import Asset, AssetScanLog
+from app.models.clients import Client
 from app.models.maintenance_task import MaintenanceTask
 from app.models.subscription import Subscription
 from app.models.asset_categories import AssetCategory
@@ -2690,6 +2691,8 @@ def bulk_create_assets(
         ),
         "errors": errors
     }
+
+
 from app.models.asset import Asset
 from app.models.departments import Department
 from sqlalchemy.orm import Session
