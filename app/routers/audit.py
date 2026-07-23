@@ -638,7 +638,7 @@ def admin_or_client_admin(
 def get_audit_report(
     audit_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(admin_required)
+    current_user=Depends(admin_or_client_admin)
 ):
     return AuditService.get_audit_report(
         db=db,
