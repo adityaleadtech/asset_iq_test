@@ -348,3 +348,100 @@ class AuditSummaryResponse(BaseModel):
     dislocated: int
     not_found: int
     lost: int
+
+
+# ==========================================================
+# Audit Report
+# ==========================================================
+
+class AuditReportInformation(BaseModel):
+    report_id: str
+    generated_at: datetime
+    generated_by: str
+
+
+class AuditInformation(BaseModel):
+    audit_id: str
+    audit_code: str
+    audit_name: str
+
+    audit_status: AuditSessionStatus
+
+    audit_type: AuditTargetType
+
+    target_name: str | None = None
+
+    scheduled_date: date
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    audit_duration: str | None = None
+
+
+class AuditSummary(BaseModel):
+    total_assets: int
+
+    audited_assets: int
+    pending_assets: int
+
+    verified_assets: int
+    dislocated_assets: int
+    lost_assets: int
+    not_found_assets: int
+
+    completion_percentage: float
+    verification_percentage: float
+
+
+class AssetVerificationDetail(BaseModel):
+    asset_id: str
+
+    asset_code: str
+    asset_name: str
+
+    serial_number: str | None = None
+
+    manufacturer: str | None = None
+    model: str | None = None
+
+    category: str | None = None
+    asset_type: str |None = None
+
+    department: str | None = None
+
+    expected_location: str | None = None
+    audited_location: str | None = None
+
+    audit_status: AuditResultStatus
+
+    condition_status: AuditConditionStatus | None = None
+
+    quantity_expected: int
+    quantity_found: int
+
+    location_status: AuditLocationStatus
+
+    audited_by: str | None = None
+    audited_at: datetime | None = None
+
+    remarks: str | None = None
+
+    created_image_url: str | None = None
+    latest_image_url: str | None = None
+    audit_image_url: str | None = None
+
+    expected_latitude: Decimal | None = None
+    expected_longitude: Decimal | None = None
+
+    audit_latitude: Decimal | None = None
+    audit_longitude: Decimal | None = None
+
+
+class AuditReportResponse(BaseModel):
+    report_information: AuditReportInformation
+
+    audit_information: AuditInformation
+
+    audit_summary: AuditSummary
+
+    asset_verification_details: list[AssetVerificationDetail]

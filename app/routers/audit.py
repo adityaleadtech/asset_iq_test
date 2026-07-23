@@ -11,6 +11,7 @@ from app.schemas.Audit import (
     AuditPlanListResponse,
     AuditPlanResponse,
     AuditPlanUpdate,
+    AuditReportResponse,
     AuditSessionResponse,
     AuditDashboardResponse,
     MyAuditResponse,
@@ -21,6 +22,7 @@ from app.schemas.Audit import (
 )
 from app.enums.audit_enums import AuditPlanStatus, AuditSessionStatus, AuditResultStatus, AssetConditionStatus
 from app.services.audit import AuditService
+from app.utils.auth import admin_required
 
 router = APIRouter(prefix="/audits", tags=["Audits"])
 
@@ -604,6 +606,41 @@ def complete_audit(
     current_user: User = Depends(get_current_user)
 ):
     return AuditService.complete_audit_session_manual(
+        db=db,
+        audit_id=audit_id,
+        current_user=current_user
+    )
+
+from fastapi import Depends, HTTPException, status
+
+from app.config.dependencies import get_current_user
+
+
+
+def admin_or_client_admin(
+    current_user=Depends(get_current_user),
+):
+    if current_user.role not in [
+        "ADMIN",
+        "CLIENT_ADMIN"
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to perform this action."
+        )
+
+    return current_user
+@router.get(
+    "/{audit_id}/report",
+    response_model=AuditReportResponse,
+    summary="Get Audit Report"
+)
+def get_audit_report(
+    audit_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(admin_required)
+):
+    return AuditService.get_audit_report(
         db=db,
         audit_id=audit_id,
         current_user=current_user

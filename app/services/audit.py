@@ -20,17 +20,22 @@ from app.schemas.Audit import (
     AuditAssetDetailsResponse,
     AuditAssetResponse,
     AuditDetailsResponse,
+    AuditInformation,
     AuditPlanCreate,
     AuditPlanListResponse,
     AuditPlanResponse,
     AuditPlanUpdate,
+    AuditReportInformation,
+    AuditReportResponse,
     AuditSessionResponse,
     AuditSessionListResponse,
     AuditDashboardResponse,
+    AuditSummary,
     AuditSummaryResponse,
     MyAuditResponse,
     ScanAssetResponse,
     SubmitAssetAuditResponse,
+    AssetVerificationDetail,
 )
 
 from app.enums.audit_enums import (
@@ -1883,4 +1888,262 @@ class AuditService:
             expected_quantity=getattr(asset, "quantity", None),
             expected_condition=str(asset.asset_condition) if asset.asset_condition else None,
             image_url=getattr(asset, "image_url", None)
+        )
+
+    @staticmethod
+    def get_audit_report(
+        db: Session,
+        audit_id: str,
+        current_user: User,
+    ) -> AuditReportResponse:
+        """
+        Generate a comprehensive audit report for a specific audit.
+        
+        This method compiles all audit data including:
+        - Audit information and metadata
+        - Summary statistics
+        - Detailed asset verification results
+        """
+        
+        # Get the audit plan
+        audit = (
+            db.query(AuditPlan)
+            .filter(
+                AuditPlan.id == audit_id,
+                AuditPlan.is_deleted == False
+            )
+            .first()
+        )
+
+        if not audit:
+            raise HTTPException(
+                status_code=404,
+                detail="Audit not found."
+            )
+
+        # Client Admin can only view reports for their own client
+        if (
+            current_user.role == UserRole.CLIENT_ADMIN
+            and audit.client_id != current_user.client_id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="You are not authorized to view this audit."
+            )
+
+        # Get the most recent audit session
+        session = (
+            db.query(AuditSession)
+            .filter(AuditSession.audit_plan_id == audit.id)
+            .order_by(AuditSession.created_at.desc())
+            .first()
+        )
+
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail="Audit session not found."
+            )
+
+        # Get all audit results for this session
+        results = (
+            db.query(AuditResult)
+            .filter(AuditResult.audit_session_id == session.id)
+            .all()
+        )
+
+        # Calculate statistics
+        total_assets = len(results)
+
+        audited_assets = sum(
+            1
+            for r in results
+            if r.status != AuditResultStatus.PENDING
+        )
+
+        pending_assets = total_assets - audited_assets
+
+        verified_assets = sum(
+            1
+            for r in results
+            if r.status == AuditResultStatus.IN_PLACE
+        )
+
+        dislocated_assets = sum(
+            1
+            for r in results
+            if r.status == AuditResultStatus.DISLOCATED
+        )
+
+        lost_assets = sum(
+            1
+            for r in results
+            if r.status == AuditResultStatus.LOST
+        )
+
+        not_found_assets = sum(
+            1
+            for r in results
+            if r.status == AuditResultStatus.NOT_FOUND
+        )
+
+        completion_percentage = (
+            round((audited_assets / total_assets) * 100, 2)
+            if total_assets
+            else 0
+        )
+
+        verification_percentage = (
+            round((verified_assets / total_assets) * 100, 2)
+            if total_assets
+            else 0
+        )
+
+        # ============================================================
+        # Determine Target Name
+        # ============================================================
+        
+        target_name = None
+        audit_type = None
+
+        if audit.targets and len(audit.targets) > 0:
+            target = audit.targets[0]
+            audit_type = target.target_type
+
+            if target.target_type == AuditTargetType.LOCATION:
+                target_name = (
+                    db.query(Location.name)
+                    .filter(Location.id == target.target_id)
+                    .scalar()
+                )
+            elif target.target_type == AuditTargetType.DEPARTMENT:
+                target_name = (
+                    db.query(Department.name)
+                    .filter(Department.id == target.target_id)
+                    .scalar()
+                )
+            elif target.target_type == AuditTargetType.CATEGORY:
+                target_name = (
+                    db.query(AssetCategory.name)
+                    .filter(AssetCategory.id == target.target_id)
+                    .scalar()
+                )
+            elif target.target_type == AuditTargetType.ASSET:
+                target_name = (
+                    db.query(Asset.name)
+                    .filter(Asset.id == target.target_id)
+                    .scalar()
+                )
+
+        # ============================================================
+        # Calculate Audit Duration
+        # ============================================================
+        
+        audit_duration = None
+
+        if session.started_at and session.completed_at:
+            duration = session.completed_at - session.started_at
+            total_seconds = int(duration.total_seconds())
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            audit_duration = f"{hours}h {minutes}m"
+
+        # ============================================================
+        # Build Asset Details
+        # ============================================================
+        
+        asset_details = []
+
+        for result in results:
+            asset = result.asset
+
+            asset_details.append(
+                AssetVerificationDetail(
+                    asset_id=str(asset.id),
+                    asset_code=asset.asset_code,
+                    asset_name=asset.name,
+                    serial_number=asset.serial_number,
+                    manufacturer=asset.manufacturer,
+                    model=asset.model,
+                    category=(
+                        asset.category.name
+                        if asset.category
+                        else None
+                    ),
+                    asset_type=(
+                        asset.asset_type.name
+                        if asset.asset_type
+                        else None
+                    ),
+                    department=(
+                        asset.department.name
+                        if asset.department
+                        else None
+                    ),
+                    expected_location=(
+                        result.expected_location.name
+                        if result.expected_location
+                        else None
+                    ),
+                    audited_location=(
+                        asset.location.name
+                        if asset.location
+                        else None
+                    ),
+                    audit_status=result.status,
+                    condition_status=result.condition_status,
+                    quantity_expected=result.quantity_expected,
+                    quantity_found=result.quantity_found,
+                    location_status=result.location_status,
+                    audited_by=(
+                        result.auditor.full_name
+                        if result.auditor
+                        else None
+                    ),
+                    audited_at=result.audited_at,
+                    remarks=result.remarks,
+                    created_image_url=asset.created_image_url,
+                    latest_image_url=asset.latest_image_url,
+                    audit_image_url=result.photo_url,
+                    expected_latitude=result.expected_latitude,
+                    expected_longitude=result.expected_longitude,
+                    audit_latitude=result.audit_latitude,
+                    audit_longitude=result.audit_longitude,
+                )
+            )
+
+        # ============================================================
+        # Return Response
+        # ============================================================
+        
+        return AuditReportResponse(
+            report_information=AuditReportInformation(
+                report_id=str(uuid.uuid4()),
+                generated_at=datetime.utcnow(),
+                generated_by=current_user.full_name,
+            ),
+            audit_information=AuditInformation(
+                audit_id=str(audit.id),
+                audit_code=audit.audit_code,
+                audit_name=audit.name,
+                audit_status=session.status,
+                audit_type=audit_type,
+                target_name=target_name,
+                scheduled_date=session.scheduled_date,
+                started_at=session.started_at,
+                completed_at=session.completed_at,
+                audit_duration=audit_duration,
+            ),
+            audit_summary=AuditSummary(
+                total_assets=total_assets,
+                audited_assets=audited_assets,
+                pending_assets=pending_assets,
+                verified_assets=verified_assets,
+                dislocated_assets=dislocated_assets,
+                lost_assets=lost_assets,
+                not_found_assets=not_found_assets,
+                completion_percentage=completion_percentage,
+                verification_percentage=verification_percentage,
+            ),
+            asset_verification_details=asset_details,
         )
