@@ -27,7 +27,7 @@ from app.services.audit import AuditService
 router = APIRouter(prefix="/audits", tags=["Audits"])
 
 # ============================================================
-# 🌐 WEB ADMIN ENDPOINTS
+# 🌐 WEB ADMIN ENDPOINTS - STATIC ROUTES FIRST
 # ============================================================
 
 @router.post(
@@ -105,6 +105,76 @@ def get_audits_router(
         status=status
     )
 
+
+@router.get(
+    "/dashboard",
+    response_model=AuditDashboardResponse,
+    summary="Audit Dashboard",
+    description="""
+    🌐 Web Admin Only
+
+    Returns high-level audit statistics.
+
+    Includes:
+    • Total audits
+    • Active audits
+    • Pending audit sessions
+    • Completed audit sessions
+    • Audits currently in progress
+    • Total assets scheduled for audit
+    • Total assets already audited
+
+    Used to populate the Audit Dashboard.
+    """
+)
+def audit_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return AuditService.audit_dashboard(
+        db=db,
+        current_user=current_user
+    )
+
+
+# ============================================================
+# 📱 MOBILE AUDITOR ENDPOINTS - STATIC ROUTES FIRST
+# ============================================================
+
+@router.get(
+    "/my-audits",
+    response_model=list[MyAuditResponse],
+    summary="Get My Audits",
+    description="""
+    📱 Mobile App Only
+
+    Returns all audit sessions assigned to the logged-in auditor.
+
+    Each audit includes:
+    • Audit name
+    • Scheduled date
+    • Status
+    • Total assets
+    • Audited assets
+    • Completion percentage
+
+    This is the first API called after the auditor logs into the mobile application.
+    """
+)
+def get_my_audits(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    print(f"MY AUDITS CALLED - User: {current_user.id if hasattr(current_user, 'id') else current_user.get('id')}")
+    return AuditService.get_my_audits_simple(
+        db=db,
+        current_user=current_user
+    )
+
+
+# ============================================================
+# 🌐 WEB ADMIN ENDPOINTS - PARAMETERIZED ROUTES
+# ============================================================
 
 @router.get(
     "/{audit_id}",
@@ -202,70 +272,9 @@ def delete_audit(
     )
 
 
-@router.get(
-    "/dashboard",
-    response_model=AuditDashboardResponse,
-    summary="Audit Dashboard",
-    description="""
-    🌐 Web Admin Only
-
-    Returns high-level audit statistics.
-
-    Includes:
-    • Total audits
-    • Active audits
-    • Pending audit sessions
-    • Completed audit sessions
-    • Audits currently in progress
-    • Total assets scheduled for audit
-    • Total assets already audited
-
-    Used to populate the Audit Dashboard.
-    """
-)
-def audit_dashboard(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    return AuditService.audit_dashboard(
-        db=db,
-        current_user=current_user
-    )
-
-
 # ============================================================
-# 📱 MOBILE AUDITOR ENDPOINTS
+# 📱 MOBILE AUDITOR ENDPOINTS - PARAMETERIZED ROUTES
 # ============================================================
-
-@router.get(
-    "/my-audits",
-    response_model=list[MyAuditResponse],
-    summary="Get My Audits",
-    description="""
-    📱 Mobile App Only
-
-    Returns all audit sessions assigned to the logged-in auditor.
-
-    Each audit includes:
-    • Audit name
-    • Scheduled date
-    • Status
-    • Total assets
-    • Audited assets
-    • Completion percentage
-
-    This is the first API called after the auditor logs into the mobile application.
-    """
-)
-def get_my_audits(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    return AuditService.get_my_audits_simple(
-        db=db,
-        current_user=current_user
-    )
-
 
 @router.get(
     "/{audit_id}/mobile",

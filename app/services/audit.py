@@ -59,7 +59,7 @@ class AuditService:
             # Resolve Client
             # ---------------------------------
 
-            if current_user.role == "PLATFORM_ADMIN":
+            if current_user["role"] == "PLATFORM_ADMIN":
 
                 if not payload.client_id:
                     raise HTTPException(
@@ -69,9 +69,9 @@ class AuditService:
 
                 client_id = payload.client_id
 
-            elif current_user.role == "CLIENT_ADMIN":
+            elif current_user["role"] == "CLIENT_ADMIN":
 
-                client_id = current_user.client_id
+                client_id = current_user["client_id"]
 
             else:
                 raise HTTPException(
@@ -282,7 +282,7 @@ class AuditService:
 
                 status=AuditPlanStatus.ACTIVE,
 
-                created_by=current_user.id,
+                created_by=current_user["id"],
 
                 is_active=True,
             )
@@ -402,20 +402,20 @@ class AuditService:
         # Role Filter
         # ---------------------------------
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
-        elif current_user.role == "AUDITOR":
+        elif current_user["role"] == "AUDITOR":
 
             query = query.filter(
-                AuditPlan.auditor_id == current_user.id
+                AuditPlan.auditor_id == current_user["id"]
             )
 
         else:
@@ -526,20 +526,20 @@ class AuditService:
             )
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
-        elif current_user.role == "AUDITOR":
+        elif current_user["role"] == "AUDITOR":
 
             query = query.filter(
-                AuditPlan.auditor_id == current_user.id
+                AuditPlan.auditor_id == current_user["id"]
             )
 
         else:
@@ -631,14 +631,14 @@ class AuditService:
             AuditPlan.is_active == True
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
         else:
@@ -787,14 +787,14 @@ class AuditService:
             AuditPlan.is_active == True
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
         else:
@@ -847,14 +847,14 @@ class AuditService:
             AuditPlan.is_active == True
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
         else:
@@ -959,20 +959,20 @@ class AuditService:
             )
         )
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user.client_id
+                AuditPlan.client_id == current_user["client_id"]
             )
 
         else:
 
             query = query.filter(
-                AuditSession.assigned_to == current_user.id
+                AuditSession.assigned_to == current_user["id"]
             )
 
         total = query.count()
@@ -1059,7 +1059,7 @@ class AuditService:
             .join(AuditPlan)
             .filter(
                 AuditPlan.id == audit_id,
-                AuditSession.assigned_to == current_user.id
+                AuditSession.assigned_to == current_user["id"]
             )
             .first()
         )
@@ -1290,11 +1290,12 @@ class AuditService:
         db: Session,
         current_user: User
     ):
+        print("called++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         sessions = (
             db.query(AuditSession)
             .join(AuditPlan)
             .filter(
-                AuditSession.assigned_to == current_user.id
+                AuditSession.assigned_to == current_user["id"]
             )
             .all()
         )
@@ -1346,7 +1347,7 @@ class AuditService:
             )
 
         # Check if the current user is the assigned auditor
-        if session.assigned_to != current_user.id:
+        if session.assigned_to != current_user["id"]:
 
             raise HTTPException(
                 status_code=403,
@@ -1373,7 +1374,7 @@ class AuditService:
 
         session.started_at = datetime.utcnow()
 
-        session.conducted_by = current_user.id
+        session.conducted_by = current_user["id"]
 
         for asset in assets:
 
@@ -1444,7 +1445,7 @@ class AuditService:
             .join(AuditPlan)
             .filter(
                 AuditPlan.id == audit_id,
-                AuditSession.assigned_to == current_user.id,
+                AuditSession.assigned_to == current_user["id"],
                 AuditSession.status == AuditSessionStatus.PENDING
             )
             .first()
@@ -1636,7 +1637,7 @@ class AuditService:
                     detail=f"Failed to upload audit photo: {str(error)}"
                 )
         
-        audit_result.audited_by = current_user.id
+        audit_result.audited_by = current_user["id"]
         audit_result.audited_at = datetime.utcnow()
         
         # Step 9: Commit changes (no need for db.add() since object is already in session)

@@ -1,12 +1,16 @@
+# app/services/transfers.py
+
 from fastapi import HTTPException
-from requests import Session
+from sqlalchemy.orm import Session
 
 from app.models.transfers import Transfer
 from app.models.location import Location
 from app.models.departments import Department
 from app.models.users import User
+from app.models.asset import Asset
 from app.schemas.transfers import AssetTransferRequest
 from app.services.assets import get_asset_by_id
+
 
 def transfer_asset(
     db: Session,
@@ -24,11 +28,25 @@ def transfer_asset(
     - Combination transfers
     """
 
-    asset = get_asset_by_id(
+    # Get asset as dictionary
+    asset_dict = get_asset_by_id(
         db,
         asset_id,
         current_user
     )
+
+    # Also get the ORM object for updating
+    asset = (
+        db.query(Asset)
+        .filter(Asset.id == asset_id)
+        .first()
+    )
+
+    if not asset:
+        raise HTTPException(
+            status_code=404,
+            detail="Asset not found"
+        )
 
     #
     # Validate target location
@@ -110,7 +128,7 @@ def transfer_asset(
                 detail="User not found."
             )
 
-        if user.client_id != asset.get("client_id"):
+        if user.client_id != asset.client_id:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -150,17 +168,17 @@ def transfer_asset(
     #
     # Create transfer record
     #
-        transfer = Transfer(
-        asset_id=asset.get("id"),  # ✅ Use .get() for dict
-        client_id=asset.get("client_id"),
+    transfer = Transfer(
+        asset_id=asset.id,
+        client_id=asset.client_id,
         
-        from_location_id=asset.get("location_id"),
+        from_location_id=asset.location_id,
         to_location_id=payload.location_id,
         
-        from_department_id=asset.get("department_id"),
+        from_department_id=asset.department_id,
         to_department_id=payload.department_id,
         
-        from_user_id=asset.get("assigned_to_user_id"),
+        from_user_id=asset.assigned_to_user_id,
         to_user_id=payload.assigned_to_user_id,
         
         transfer_type=transfer_type,
@@ -171,21 +189,22 @@ def transfer_asset(
         status="COMPLETED"
     )
 
-        db.add(transfer)
+    db.add(transfer)
 
     #
     # Update asset
     #
     if payload.location_id:
-        asset["location_id"] = payload.location_id  # ✅ Dict assignment
+        asset.location_id = payload.location_id
 
     if payload.department_id:
-        asset["department_id"] = payload.department_id
+        asset.department_id = payload.department_id
 
     if payload.assigned_to_user_id:
-        asset["assigned_to_user_id"] = payload.assigned_to_user_id
+        asset.assigned_to_user_id = payload.assigned_to_user_id
 
     db.commit()
-   
+    db.refresh(asset)
 
-    return asset
+    # Return the updated asset dict
+    return get_asset_by_id(db, asset_id, current_user)
