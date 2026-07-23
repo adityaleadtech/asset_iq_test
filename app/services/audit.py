@@ -1,3 +1,5 @@
+# app/services/audit.py
+
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status, UploadFile
 from sqlalchemy.orm import Session
@@ -1488,7 +1490,9 @@ class AuditService:
         - Exists and is active
         - Has not already been audited
 
-        Returns asset details for verification before submitting the audit result.
+        Returns a simple success response with asset ID.
+        Detailed asset information is available via:
+        GET /audits/{audit_id}/assets/{asset_id}
         """
         
         # Verify audit session exists and is active
@@ -1526,15 +1530,11 @@ class AuditService:
                 detail="Asset has already been audited."
             )
         
-        # Return asset details
+        # ✅ Return only the fields expected by ScanAssetResponse
         return ScanAssetResponse(
-            asset_id=asset.id,
-            asset_name=asset.name,
-            serial_number=asset.serial_number,
-            qr_code_url=asset.qr_code_url,
-            location=asset.location.name if asset.location else None,
-            expected_condition=asset.asset_condition,
-            already_audited=False  # Since we passed the PENDING check
+            success=True,
+            message="Asset validated successfully.",
+            asset_id=asset.id
         )
 
     @staticmethod
@@ -1611,7 +1611,7 @@ class AuditService:
         audit_result.audit_latitude = audit_latitude
         audit_result.audit_longitude = audit_longitude
         
-        # Step 8: Set location_status using the helper method (FIXED)
+        # Step 8: Set location_status using the helper method
         audit_result.location_status = AuditService._get_location_status(status_enum)
         
         # Step 9: Handle photo upload if provided
