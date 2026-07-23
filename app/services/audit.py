@@ -1,6 +1,9 @@
+# app/services/audit.py
+
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+from typing import Dict
 
 from app.models.clients import Client
 from app.models.users import User
@@ -14,6 +17,8 @@ from app.models.auditsession import AuditSession
 from app.models.AuditResult import AuditResult
 
 from app.schemas.Audit import (
+    AuditAssetResponse,
+    AuditDetailsResponse,
     AuditPlanCreate,
     AuditPlanListResponse,
     AuditPlanResponse,
@@ -23,7 +28,11 @@ from app.schemas.Audit import (
     AuditResultRequest,
     AuditResultResponse,
     AuditDashboardResponse,
+    AuditSummaryResponse,
     MyAuditResponse,
+    ScanAssetResponse,
+    SubmitAssetAuditRequest,
+    SubmitAssetAuditResponse,
 )
 
 from app.enums.audit_enums import (
@@ -946,10 +955,9 @@ class AuditService:
 
         audit_plan = session.audit_plan
 
-        assets = AuditService._get_assets_from_targets(
-            audit_plan=audit_plan,
-            db=db
-        )
+        # Use the consolidated helper method
+        assets_map = AuditService.get_audit_assets(db, audit_plan.id)
+        assets = list(assets_map.values())
 
         session.total_assets = len(assets)
         session.audited_assets = 0
@@ -1011,7 +1019,45 @@ class AuditService:
         )
 
     @staticmethod
-    def submit_asset_audit(
+    def start_audit_session_by_plan(
+        audit_id: str,
+        db: Session,
+        current_user: User
+    ):
+        """
+        Start an audit session using the audit plan ID.
+        
+        This finds the active/pending session for the given audit plan
+        and starts it.
+        """
+        
+        # Find the active/pending session for this audit plan
+        session = (
+            db.query(AuditSession)
+            .join(AuditPlan)
+            .filter(
+                AuditPlan.id == audit_id,
+                AuditSession.assigned_to == current_user.id,
+                AuditSession.status == AuditSessionStatus.PENDING
+            )
+            .first()
+        )
+        
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail="No pending audit session found for this audit."
+            )
+        
+        # Use the existing start_audit_session method
+        return AuditService.start_audit_session(
+            session_id=session.id,
+            db=db,
+            current_user=current_user
+        )
+
+    @staticmethod
+    def submit_asset_audit_legacy(
         session_id: str,
         asset_id: str,
         payload: AuditResultRequest,
@@ -1253,110 +1299,6 @@ class AuditService:
         )
 
     @staticmethod
-    def _get_assets_from_targets(
-        audit_plan: AuditPlan,
-        db: Session
-    ) -> list[Asset]:
-        """Helper method to get all assets from audit targets."""
-        asset_ids = set()
-
-        targets = (
-            db.query(AuditTarget)
-            .filter(
-                AuditTarget.audit_plan_id == audit_plan.id
-            )
-            .all()
-        )
-
-        for target in targets:
-
-            # ---------------------------------
-            # Individual Asset
-            # ---------------------------------
-
-            if target.target_type == AuditTargetType.ASSET:
-
-                asset = (
-                    db.query(Asset)
-                    .filter(
-                        Asset.id == target.target_id,
-                        Asset.is_active == True
-                    )
-                    .first()
-                )
-
-                if asset:
-                    asset_ids.add(asset.id)
-
-            # ---------------------------------
-            # Category
-            # ---------------------------------
-
-            elif target.target_type == AuditTargetType.CATEGORY:
-
-                assets = (
-                    db.query(Asset)
-                    .filter(
-                        Asset.category_id == target.target_id,
-                        Asset.client_id == audit_plan.client_id,
-                        Asset.is_active == True
-                    )
-                    .all()
-                )
-
-                for asset in assets:
-                    asset_ids.add(asset.id)
-
-            # ---------------------------------
-            # Department
-            # ---------------------------------
-
-            elif target.target_type == AuditTargetType.DEPARTMENT:
-
-                assets = (
-                    db.query(Asset)
-                    .filter(
-                        Asset.department_id == target.target_id,
-                        Asset.client_id == audit_plan.client_id,
-                        Asset.is_active == True
-                    )
-                    .all()
-                )
-
-                for asset in assets:
-                    asset_ids.add(asset.id)
-
-            # ---------------------------------
-            # Location
-            # ---------------------------------
-
-            elif target.target_type == AuditTargetType.LOCATION:
-
-                assets = (
-                    db.query(Asset)
-                    .filter(
-                        Asset.location_id == target.target_id,
-                        Asset.client_id == audit_plan.client_id,
-                        Asset.is_active == True
-                    )
-                    .all()
-                )
-
-                for asset in assets:
-                    asset_ids.add(asset.id)
-
-        if not asset_ids:
-            return []
-
-        return (
-            db.query(Asset)
-            .filter(
-                Asset.id.in_(asset_ids)
-            )
-            .all()
-        )
-
-    @staticmethod
     def audit_dashboard(
         db: Session,
         current_user
@@ -1550,97 +1492,654 @@ class AuditService:
             size=size
 
         )
+
     @staticmethod
     def get_session_assets(
-    session_id: str,
-    db: Session,
-    current_user
-):
+        session_id: str,
+        db: Session,
+        current_user
+    ):
         session = (
-        db.query(AuditSession)
-        .filter(AuditSession.id == session_id)
-        .first()
-    )
+            db.query(AuditSession)
+            .filter(AuditSession.id == session_id)
+            .first()
+        )
         if not session:
             raise HTTPException(
-            status_code=404,
-            detail="Audit session not found."
-        )
+                status_code=404,
+                detail="Audit session not found."
+            )
         if session.assigned_to != current_user["id"]:
             raise HTTPException(
-            status_code=403,
-            detail="Permission denied."
-        )
+                status_code=403,
+                detail="Permission denied."
+            )
         results = (
-        db.query(AuditResult)
-        .join(Asset)
-        .filter(
-            AuditResult.audit_session_id == session_id
-        )
-        .all()
+            db.query(AuditResult)
+            .join(Asset)
+            .filter(
+                AuditResult.audit_session_id == session_id
+            )
+            .all()
         )
         return [
-        AuditResultResponse(
-            asset_id=result.asset_id,
-            asset_name=result.asset.name,
-            serial_number=result.asset.serial_number,
-            
-            status=result.status,
-            condition_status=result.condition_status,
-            
-            quantity_expected=result.quantity_expected,
-            quantity_found=result.quantity_found,
-            
-            remarks=result.remarks,
-            photo_url=result.photo_url,
-            
-            expected_location_id=result.expected_location_id,
-            expected_latitude=result.expected_latitude,
-            expected_longitude=result.expected_longitude,
-            
-            audit_latitude=result.audit_latitude,
-            audit_longitude=result.audit_longitude,
-            
-            location_status=result.location_status,
-            
-            audited_by=result.audited_by,
-            audited_at=result.audited_at,
-        )
-        for result in results
-    ]
-    def get_my_audits(
-    db: Session,
-    current_user: User
-):
+            AuditResultResponse(
+                asset_id=result.asset_id,
+                asset_name=result.asset.name,
+                serial_number=result.asset.serial_number,
+                
+                status=result.status,
+                condition_status=result.condition_status,
+                
+                quantity_expected=result.quantity_expected,
+                quantity_found=result.quantity_found,
+                
+                remarks=result.remarks,
+                photo_url=result.photo_url,
+                
+                expected_location_id=result.expected_location_id,
+                expected_latitude=result.expected_latitude,
+                expected_longitude=result.expected_longitude,
+                
+                audit_latitude=result.audit_latitude,
+                audit_longitude=result.audit_longitude,
+                
+                location_status=result.location_status,
+                
+                audited_by=result.audited_by,
+                audited_at=result.audited_at,
+            )
+            for result in results
+        ]
+
+    @staticmethod
+    def get_my_audits_simple(
+        db: Session,
+        current_user: User
+    ):
         sessions = (
-        db.query(AuditSession)
-        .join(AuditPlan)
-        .filter(
-            AuditSession.assigned_to == current_user.id
+            db.query(AuditSession)
+            .join(AuditPlan)
+            .filter(
+                AuditSession.assigned_to == current_user.id
+            )
+            .all()
         )
-        .all()
-    )
         response = []
         for session in sessions:
             percentage = 0
             if session.total_assets:
                 percentage = round(
+                    (session.audited_assets / session.total_assets) * 100,
+                    2
+                )
+
+            response.append(
+                MyAuditResponse(
+                    audit_id=session.audit_plan.id,
+                    session_id=session.id,
+                    audit_name=session.audit_plan.name,
+                    status=session.status,
+                    start_date=session.audit_plan.start_date,
+                    end_date=session.audit_plan.end_date,
+                    scheduled_date=session.scheduled_date,
+                    total_assets=session.total_assets,
+                    audited_assets=session.audited_assets,
+                    completion_percentage=percentage
+                )
+            )
+        return response
+
+    # -------------------- HELPER METHODS --------------------
+    
+    @staticmethod
+    def get_audit_session(
+        db: Session,
+        audit_id: str,
+        current_user: User
+    ) -> AuditSession:
+        """
+        Get and verify the audit session exists and is assigned to the user.
+        
+        Args:
+            db: Database session
+            audit_id: The audit plan ID
+            current_user: The authenticated user
+            
+        Returns:
+            AuditSession if valid
+            
+        Raises:
+            HTTPException: If audit not found or user not authorized
+        """
+        session = (
+            db.query(AuditSession)
+            .join(AuditPlan)
+            .filter(
+                AuditPlan.id == audit_id,
+                AuditSession.assigned_to == current_user.id
+            )
+            .first()
+        )
+        
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Audit not found or you don't have access to it."
+            )
+        
+        return session
+
+    @staticmethod
+    def get_audit_assets(
+        db: Session,
+        audit_id: str
+    ) -> Dict[str, Asset]:
+        """
+        Get all assets that belong to an audit plan.
+        
+        Args:
+            db: Database session
+            audit_id: The audit plan ID
+            
+        Returns:
+            Dictionary mapping asset_id to Asset objects
+        """
+        targets = (
+            db.query(AuditTarget)
+            .filter(
+                AuditTarget.audit_plan_id == audit_id
+            )
+            .all()
+        )
+        
+        assets_map = {}
+        
+        for target in targets:
+            assets = []
+            
+            if target.target_type == AuditTargetType.ASSET:
+                assets = (
+                    db.query(Asset)
+                    .filter(
+                        Asset.id == target.target_id,
+                        Asset.is_active == True
+                    )
+                    .all()
+                )
+                
+            elif target.target_type == AuditTargetType.LOCATION:
+                assets = (
+                    db.query(Asset)
+                    .filter(
+                        Asset.location_id == target.target_id,
+                        Asset.is_active == True
+                    )
+                    .all()
+                )
+                
+            elif target.target_type == AuditTargetType.DEPARTMENT:
+                assets = (
+                    db.query(Asset)
+                    .filter(
+                        Asset.department_id == target.target_id,
+                        Asset.is_active == True
+                    )
+                    .all()
+                )
+                
+            elif target.target_type == AuditTargetType.CATEGORY:
+                assets = (
+                    db.query(Asset)
+                    .filter(
+                        Asset.category_id == target.target_id,
+                        Asset.is_active == True
+                    )
+                    .all()
+                )
+            
+            for asset in assets:
+                assets_map[asset.id] = asset
+        
+        return assets_map
+
+    @staticmethod
+    def get_asset_and_verify(
+        db: Session,
+        asset_id: str,
+        audit_id: str
+    ) -> Asset:
+        """
+        Get asset and verify it exists, is active, and belongs to the audit.
+        
+        Args:
+            db: Database session
+            asset_id: The asset ID
+            audit_id: The audit plan ID
+            
+        Returns:
+            Asset if valid
+            
+        Raises:
+            HTTPException: If asset not found or not part of audit
+        """
+        # Find the asset
+        asset = (
+            db.query(Asset)
+            .filter(
+                Asset.id == asset_id,
+                Asset.is_active == True
+            )
+            .first()
+        )
+        
+        if not asset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asset not found."
+            )
+        
+        # Verify asset belongs to this audit
+        audit_assets = AuditService.get_audit_assets(db, audit_id)
+        
+        if asset.id not in audit_assets:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This asset is not part of this audit."
+            )
+        
+        return asset
+
+    @staticmethod
+    def _get_location_status(audit_status: AuditResultStatus) -> str:
+        """
+        Map audit result status to location status.
+        """
+        if audit_status == AuditResultStatus.IN_PLACE:
+            return "IN_PLACE"
+        elif audit_status == AuditResultStatus.DISLOCATED:
+            return "DISLOCATED"
+        elif audit_status == AuditResultStatus.NOT_FOUND:
+            return "NOT_FOUND"
+        elif audit_status == AuditResultStatus.LOST:
+            return "LOST"
+        else:
+            return "UNKNOWN"
+
+    # -------------------- MAIN ENDPOINT METHODS --------------------
+
+    @staticmethod
+    def get_audit_details(
+        db: Session,
+        audit_id: str,
+        current_user: User
+    ) -> AuditDetailsResponse:
+        """
+        Get detailed information about a specific audit session.
+        """
+        
+        # Get the audit session
+        session = AuditService.get_audit_session(db, audit_id, current_user)
+        
+        # Get all assets in this audit
+        assets_map = AuditService.get_audit_assets(db, audit_id)
+        
+        # Find audited assets for this session (non-PENDING status)
+        audited_asset_ids = {
+            row.asset_id
+            for row in db.query(AuditResult.asset_id)
+            .filter(
+                AuditResult.audit_session_id == session.id,
+                AuditResult.status != AuditResultStatus.PENDING
+            )
+            .all()
+        }
+        
+        # Build asset response list
+        asset_list = []
+        
+        for asset in assets_map.values():
+            location_name = None
+            if asset.location:
+                location_name = asset.location.name
+            
+            asset_list.append(
+                AuditAssetResponse(
+                    asset_id=asset.id,
+                    asset_name=asset.name,
+                    serial_number=asset.serial_number,
+                    qr_code_url=asset.qr_code_url,
+                    location=location_name,
+                    audit_status=(
+                        "AUDITED"
+                        if asset.id in audited_asset_ids
+                        else "PENDING"
+                    )
+                )
+            )
+        
+        # Calculate completion percentage
+        completion_percentage = 0.0
+        
+        if session.total_assets and session.total_assets > 0:
+            completion_percentage = round(
                 (session.audited_assets / session.total_assets) * 100,
                 2
             )
-
-        response.append(
-            MyAuditResponse(
-                audit_id=session.audit_plan.id,
-                session_id=session.id,
-                audit_name=session.audit_plan.name,
-                status=session.status,
-                start_date=session.audit_plan.start_date,
-                end_date=session.audit_plan.end_date,
-                scheduled_date=session.scheduled_date,
-                total_assets=session.total_assets,
-                audited_assets=session.audited_assets,
-                completion_percentage=percentage
-            )
+        
+        # Return the complete response
+        return AuditDetailsResponse(
+            audit_id=session.audit_plan.id,
+            session_id=session.id,
+            audit_name=session.audit_plan.name,
+            description=session.audit_plan.description,
+            status=session.status,
+            scheduled_date=session.scheduled_date,
+            start_date=session.audit_plan.start_date,
+            end_date=session.audit_plan.end_date,
+            total_assets=session.total_assets,
+            audited_assets=session.audited_assets,
+            completion_percentage=completion_percentage,
+            assets=asset_list
         )
-        return response
+
+    @staticmethod
+    def scan_asset(
+        db: Session,
+        audit_id: str,
+        asset_id: str,
+        current_user: User
+    ) -> ScanAssetResponse:
+        """
+        Scan an asset by its ID during an audit.
+        """
+        
+        # Verify audit session exists and is active
+        session = AuditService.get_audit_session(db, audit_id, current_user)
+        
+        # Check if session is active
+        if session.status != AuditSessionStatus.IN_PROGRESS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Audit session is not active."
+            )
+        
+        # Get and verify asset
+        asset = AuditService.get_asset_and_verify(db, asset_id, audit_id)
+        
+        # Check if already audited - look for non-PENDING status
+        audit_result = (
+            db.query(AuditResult)
+            .filter(
+                AuditResult.audit_session_id == session.id,
+                AuditResult.asset_id == asset.id
+            )
+            .first()
+        )
+        
+        # Asset is already audited if it exists AND status is not PENDING
+        already_audited = (
+            audit_result is not None and 
+            audit_result.status != AuditResultStatus.PENDING
+        )
+        
+        return ScanAssetResponse(
+            asset_id=asset.id,
+            asset_name=asset.name,
+            serial_number=asset.serial_number,
+            qr_code_url=asset.qr_code_url,
+            location=asset.location.name if asset.location else None,
+            expected_condition=asset.asset_condition,
+            already_audited=already_audited
+        )
+
+    @staticmethod
+    def submit_asset_audit(
+        db: Session,
+        audit_id: str,
+        asset_id: str,
+        request: SubmitAssetAuditRequest,
+        current_user: User
+    ) -> SubmitAssetAuditResponse:
+        """
+        Submit audit results for a specific asset during an audit.
+        
+        This is the core endpoint for the mobile audit flow where auditors
+        submit their findings for each asset.
+        """
+        
+        # Step 1: Verify audit session exists and user is assigned
+        session = AuditService.get_audit_session(db, audit_id, current_user)
+        
+        # Step 2: Verify session is active
+        if session.status != AuditSessionStatus.IN_PROGRESS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Audit session is not active."
+            )
+        
+        # Step 3: Verify asset exists, is active, and belongs to audit
+        asset = AuditService.get_asset_and_verify(db, asset_id, audit_id)
+        
+        # Step 4: Get the existing AuditResult (created during start_audit_session)
+        audit_result = (
+            db.query(AuditResult)
+            .filter(
+                AuditResult.audit_session_id == session.id,
+                AuditResult.asset_id == asset.id
+            )
+            .first()
+        )
+        
+        if not audit_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asset not found in this audit."
+            )
+        
+        # Step 5: Check if already audited (not PENDING)
+        if audit_result.status != AuditResultStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Asset has already been audited."
+            )
+        
+        # Step 6: Update the existing AuditResult with findings
+        audit_result.status = request.status
+        audit_result.condition_status = request.condition_status
+        audit_result.quantity_found = request.quantity_found
+        audit_result.remarks = request.remarks
+        audit_result.photo_url = request.photo_url
+        audit_result.audit_latitude = request.audit_latitude
+        audit_result.audit_longitude = request.audit_longitude
+        
+        # Step 7: Set location_status using the helper method
+        audit_result.location_status = AuditService._get_location_status(request.status)
+        
+        audit_result.audited_by = current_user.id
+        audit_result.audited_at = datetime.utcnow()
+        
+        # Step 8: Save the updated audit result
+        db.add(audit_result)
+        
+        # Step 9: Update session progress
+        session.audited_assets += 1
+        
+        # Step 10: Commit all changes
+        db.commit()
+        
+        # Step 11: Refresh for latest data
+        db.refresh(audit_result)
+        db.refresh(session)
+        
+        # Step 12: Calculate remaining assets and completion percentage
+        remaining_assets = session.total_assets - session.audited_assets
+        
+        completion_percentage = 0.0
+        if session.total_assets and session.total_assets > 0:
+            completion_percentage = round(
+                (session.audited_assets / session.total_assets) * 100,
+                2
+            )
+        
+        # Step 13: Check if all assets are audited (but don't auto-complete)
+        is_complete = session.audited_assets >= session.total_assets
+        
+        # Step 14: Return response
+        return SubmitAssetAuditResponse(
+            message="Asset audited successfully.",
+            audit_id=session.audit_plan.id,
+            session_id=session.id,
+            asset_id=asset.id,
+            asset_name=asset.name,
+            audited_assets=session.audited_assets,
+            total_assets=session.total_assets,
+            remaining_assets=remaining_assets,
+            completion_percentage=completion_percentage,
+            is_complete=is_complete
+        )
+
+    @staticmethod
+    def complete_audit_session_manual(
+        db: Session,
+        audit_id: str,
+        current_user: User
+    ) -> dict:
+        """
+        Manually complete an audit session.
+        
+        This endpoint should be called when:
+        1. All assets have been audited (is_complete = true)
+        2. The auditor has reviewed and confirmed the audit
+        
+        The audit will be marked as COMPLETED and cannot be modified further.
+        """
+        
+        # Step 1: Verify audit session exists and user is assigned
+        session = AuditService.get_audit_session(db, audit_id, current_user)
+        
+        # Step 2: Verify session is in progress
+        if session.status != AuditSessionStatus.IN_PROGRESS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Audit session is not active. Current status: {session.status}"
+            )
+        
+        # Step 3: Check if all assets have been audited
+        if session.audited_assets < session.total_assets:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot complete audit. Only {session.audited_assets} out of {session.total_assets} assets have been audited."
+            )
+        
+        # Step 4: Complete the audit
+        session.status = AuditSessionStatus.COMPLETED
+        session.completed_at = datetime.utcnow()
+        
+        # Update next run date for recurring audits
+        audit_plan = session.audit_plan
+        if audit_plan.frequency_unit == AuditFrequencyUnit.DAY:
+            audit_plan.next_run_date += timedelta(
+                days=audit_plan.frequency_interval
+            )
+        elif audit_plan.frequency_unit == AuditFrequencyUnit.WEEK:
+            audit_plan.next_run_date += timedelta(
+                weeks=audit_plan.frequency_interval
+            )
+        else:
+            audit_plan.next_run_date += timedelta(
+                days=30 * audit_plan.frequency_interval
+            )
+        
+        # Create next session for recurring audits
+        new_session = AuditSession(
+            audit_plan_id=audit_plan.id,
+            assigned_to=audit_plan.auditor_id,
+            scheduled_date=audit_plan.next_run_date,
+            status=AuditSessionStatus.PENDING,
+            total_assets=0,
+            audited_assets=0
+        )
+        db.add(new_session)
+        
+        db.commit()
+        db.refresh(session)
+        
+        # Step 5: Return response
+        return {
+            "success": True,
+            "message": "Audit completed successfully.",
+            "audit_id": session.audit_plan.id,
+            "session_id": session.id,
+            "status": session.status,
+            "completed_at": session.completed_at,
+            "total_assets": session.total_assets,
+            "audited_assets": session.audited_assets,
+            "completion_percentage": 100.0
+        }
+
+    @staticmethod
+    def get_audit_summary(
+        db: Session,
+        audit_id: str,
+        current_user: User
+    ) -> AuditSummaryResponse:
+        """
+        Get summary statistics for an audit.
+        """
+
+        # Get audit session assigned to the current user
+        session = AuditService.get_audit_session(
+            db=db,
+            audit_id=audit_id,
+            current_user=current_user
+        )
+
+        results = (
+            db.query(AuditResult)
+            .filter(
+                AuditResult.audit_session_id == session.id
+            )
+            .all()
+        )
+
+        total_assets = session.total_assets
+        audited_assets = session.audited_assets
+        remaining_assets = total_assets - audited_assets
+
+        completion_percentage = 0.0
+        if total_assets > 0:
+            completion_percentage = round(
+                (audited_assets / total_assets) * 100,
+                2
+            )
+
+        in_place = 0
+        dislocated = 0
+        not_found = 0
+        lost = 0
+
+        for result in results:
+            if result.status == AuditResultStatus.IN_PLACE:
+                in_place += 1
+            elif result.status == AuditResultStatus.DISLOCATED:
+                dislocated += 1
+            elif result.status == AuditResultStatus.NOT_FOUND:
+                not_found += 1
+            elif result.status == AuditResultStatus.LOST:
+                lost += 1
+
+        return AuditSummaryResponse(
+            audit_id=session.audit_plan.id,
+            session_id=session.id,
+            audit_name=session.audit_plan.name,
+            status=session.status,
+            total_assets=total_assets,
+            audited_assets=audited_assets,
+            remaining_assets=remaining_assets,
+            completion_percentage=completion_percentage,
+            in_place=in_place,
+            dislocated=dislocated,
+            not_found=not_found,
+            lost=lost,
+        )

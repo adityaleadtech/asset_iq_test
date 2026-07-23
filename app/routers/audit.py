@@ -1,3 +1,5 @@
+# app/routers/audit.py
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -5,6 +7,7 @@ from typing import Optional
 from app.config.dependencies import get_current_user, get_db
 from app.models.users import User
 from app.schemas.Audit import (
+    AuditDetailsResponse,
     AuditPlanCreate,
     AuditPlanListResponse,
     AuditPlanResponse,
@@ -15,27 +18,26 @@ from app.schemas.Audit import (
     AuditResultResponse,
     AuditDashboardResponse,
     MyAuditResponse,
+    ScanAssetRequest,
+    ScanAssetResponse,
+    SubmitAssetAuditRequest,
+    SubmitAssetAuditResponse,
+    AuditSummaryResponse,
 )
 from app.enums.audit_enums import AuditPlanStatus, AuditSessionStatus
 from app.services.audit import AuditService
 
 router = APIRouter(prefix="/audits", tags=["Audits"])
 
+# ============================================================
+# ADMIN ENDPOINTS
+# ============================================================
 
 @router.post(
     "",
     response_model=AuditPlanResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create Audit Plan",
-    description="""
-    Creates a new audit plan.
-
-    Frontend Usage:
-    - Used by Platform Admin and Client Admin.
-    - Select audit name, frequency, auditor, and audit targets.
-    - Targets can be Locations, Departments, Categories, or Individual Assets.
-    - Automatically creates the first audit session.
-    """
 )
 def create_audit(
     payload: AuditPlanCreate,
@@ -53,15 +55,6 @@ def create_audit(
     "",
     response_model=AuditPlanListResponse,
     summary="Get Audit Plans",
-    description="""
-    Returns a paginated list of audit plans.
-
-    Frontend Usage:
-    - Populate the Audit Management table.
-    - Supports pagination, search, and status filtering.
-    - Platform Admin sees all audits.
-    - Client Admin sees audits of their client.
-    """
 )
 def get_audits_router(
     db: Session = Depends(get_db),
@@ -82,93 +75,16 @@ def get_audits_router(
 
 
 @router.get(
-    "/my-audits",
-    response_model=list[MyAuditResponse]
-)
-def get_my_audits(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-    return AuditService.get_my_audits(
-        db,
-        current_user
-    )
-
-
-@router.get(
-    "/dashboard",
-    response_model=AuditDashboardResponse,
-    summary="Audit Dashboard",
-    description="""
-    Returns audit statistics.
-
-    Frontend Usage:
-    - Dashboard cards.
-    - Total audits.
-    - Active audits.
-    - Pending sessions.
-    - Completed sessions.
-    - Total assets.
-    - Audited assets.
-    """
-)
-def audit_dashboard(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    return AuditService.audit_dashboard(
-        db=db,
-        current_user=current_user
-    )
-
-
-@router.get(
-    "/history",
-    response_model=AuditSessionListResponse,
-    summary="Audit History",
-    description="""
-    Returns completed audit sessions.
-
-    Frontend Usage:
-    - Audit History screen.
-    - Shows completed audits with assigned auditor,
-    completion time and audited asset count.
-    """
-)
-def audit_history(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    page: int = Query(1, ge=1, description="Page number"),
-    size: int = Query(10, ge=1, le=100, description="Items per page")
-):
-    return AuditService.audit_history(
-        db=db,
-        current_user=current_user,
-        page=page,
-        size=size
-    )
-
-
-@router.get(
-    "/{audit_id}",
+    "/plan/{audit_id}",
     response_model=AuditPlanResponse,
-    summary="Get Audit Details",
-    description="""
-    Returns complete details of an audit plan.
-
-    Frontend Usage:
-    - Open Audit Details page.
-    - Displays assigned auditor.
-    - Displays targets.
-    - Displays audit schedule.
-    - Displays all audit sessions.
-    """
+    summary="Get Audit Plan Details (Admin)",
 )
-def get_audit_by_id(
+def get_audit_plan_by_id(
     audit_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """Admin endpoint for getting audit plan details with all sessions."""
     return AuditService.get_audit_by_id(
         audit_id=audit_id,
         db=db,
@@ -180,14 +96,6 @@ def get_audit_by_id(
     "/{audit_id}",
     response_model=AuditPlanResponse,
     summary="Update Audit Plan",
-    description="""
-    Updates an existing audit plan.
-
-    Frontend Usage:
-    - Edit Audit screen.
-    - Allows changing frequency, auditor,
-    status and audit details before execution.
-    """
 )
 def update_audit(
     audit_id: str,
@@ -207,14 +115,6 @@ def update_audit(
     "/{audit_id}",
     status_code=status.HTTP_200_OK,
     summary="Delete Audit Plan",
-    description="""
-    Soft deletes an audit plan.
-
-    Frontend Usage:
-    - Delete action from Audit Management page.
-    - Cannot delete audits that currently have an
-    active audit session.
-    """
 )
 def delete_audit(
     audit_id: str,
@@ -228,53 +128,213 @@ def delete_audit(
     )
 
 
-@router.post(
-    "/sessions/{session_id}/start",
-    response_model=AuditSessionResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Start Audit Session",
-    description="""
-    Starts an assigned audit session.
-
-    Frontend Usage:
-    - Employee presses the Start Audit button.
-    - Generates audit records for every asset included
-    in the audit.
-    - Changes session status to IN_PROGRESS.
-    """
+@router.get(
+    "/dashboard",
+    response_model=AuditDashboardResponse,
+    summary="Audit Dashboard",
 )
-def start_audit_session(
-    session_id: str,
+def audit_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return AuditService.start_audit_session(
-        session_id=session_id,
+    return AuditService.audit_dashboard(
         db=db,
         current_user=current_user
     )
 
 
 @router.get(
+    "/history",
+    response_model=AuditSessionListResponse,
+    summary="Audit History",
+)
+def audit_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(10, ge=1, le=100, description="Items per page")
+):
+    return AuditService.audit_history(
+        db=db,
+        current_user=current_user,
+        page=page,
+        size=size
+    )
+
+
+# ============================================================
+# MOBILE AUDITOR ENDPOINTS
+# ============================================================
+
+@router.get(
+    "/my-audits",
+    response_model=list[MyAuditResponse],
+    summary="Get My Audits",
+)
+def get_my_audits(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    return AuditService.get_my_audits_simple(
+        db,
+        current_user
+    )
+
+
+@router.get(
+    "/{audit_id}",
+    response_model=AuditDetailsResponse,
+    summary="Get Audit Details (Mobile)",
+)
+def get_audit_details(
+    audit_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """Mobile endpoint for getting audit details with asset list."""
+    return AuditService.get_audit_details(
+        db=db,
+        audit_id=audit_id,
+        current_user=current_user
+    )
+
+
+@router.post(
+    "/{audit_id}/start",
+    response_model=AuditSessionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Start Audit Session",
+)
+def start_audit_session(
+    audit_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Start an audit session by audit plan ID."""
+    return AuditService.start_audit_session_by_plan(
+        audit_id=audit_id,
+        db=db,
+        current_user=current_user
+    )
+
+
+@router.post(
+    "/{audit_id}/scan",
+    response_model=ScanAssetResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Scan Asset",
+)
+def scan_asset(
+    audit_id: str,
+    request: ScanAssetRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Scan an asset during an audit.
+    
+    The frontend sends the AssetIQ asset ID obtained from either
+    a QR code or an RFID scan.
+    """
+    return AuditService.scan_asset(
+        db=db,
+        audit_id=audit_id,
+        asset_id=request.asset_id,
+        current_user=current_user
+    )
+
+
+@router.post(
+    "/{audit_id}/assets/{asset_id}",
+    response_model=SubmitAssetAuditResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Submit Asset Audit",
+)
+def submit_asset_audit(
+    audit_id: str,
+    asset_id: str,
+    request: SubmitAssetAuditRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Submit audit findings for a scanned asset.
+    """
+    return AuditService.submit_asset_audit(
+        db=db,
+        audit_id=audit_id,
+        asset_id=asset_id,
+        request=request,
+        current_user=current_user
+    )
+
+
+@router.get(
+    "/{audit_id}/summary",
+    response_model=AuditSummaryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Audit Summary",
+)
+def get_audit_summary(
+    audit_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get summary statistics for an audit.
+    
+    Returns:
+    - Total assets
+    - Audited vs pending counts
+    - Completion percentage
+    - Breakdown by status (in_place, dislocated, missing, etc.)
+    """
+    return AuditService.get_audit_summary(
+        db=db,
+        audit_id=audit_id,
+        current_user=current_user
+    )
+
+
+@router.post(
+    "/{audit_id}/complete",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Complete Audit Session",
+)
+def complete_audit(
+    audit_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Manually complete an audit session.
+    
+    Only allowed when all assets have been audited.
+    """
+    return AuditService.complete_audit_session_manual(
+        db=db,
+        audit_id=audit_id,
+        current_user=current_user
+    )
+
+
+# ============================================================
+# DEPRECATED / LEGACY ENDPOINTS (to be removed)
+# ============================================================
+
+@router.get(
     "/sessions/{session_id}/assets",
     response_model=list[AuditResultResponse],
-    summary="Get Assets for Audit Session",
-    description="""
-    Returns all assets included in an audit session.
-
-    Frontend Usage:
-    - Asset List screen.
-    - Displays every asset that needs verification.
-    - Shows audit status for each asset.
-    - Employee selects an asset to perform verification.
-    """
+    summary="[DEPRECATED] Get Assets for Audit Session",
+    deprecated=True
 )
-def get_session_assets(
+def get_session_assets_deprecated(
     session_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Note: You'll need to implement this method in AuditService
+    """Deprecated: Use /{audit_id} instead."""
     return AuditService.get_session_assets(
         session_id=session_id,
         db=db,
@@ -286,28 +346,18 @@ def get_session_assets(
     "/sessions/{session_id}/assets/{asset_id}",
     response_model=AuditResultResponse,
     status_code=status.HTTP_200_OK,
-    summary="Submit Asset Audit",
-    description="""
-    Submits verification for a single asset.
-
-    Frontend Usage:
-    - Asset Verification screen.
-    - Upload captured image.
-    - Submit GPS coordinates.
-    - Submit remarks.
-    - Submit asset condition.
-    - Submit actual location.
-    - Marks the asset as audited.
-    """
+    summary="[DEPRECATED] Submit Asset Audit",
+    deprecated=True
 )
-def submit_asset_audit(
+def submit_asset_audit_deprecated(
     session_id: str,
     asset_id: str,
     payload: AuditResultRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return AuditService.submit_asset_audit(
+    """Deprecated: Use /{audit_id}/assets/{asset_id} instead."""
+    return AuditService.submit_asset_audit_legacy(
         session_id=session_id,
         asset_id=asset_id,
         payload=payload,
@@ -320,25 +370,19 @@ def submit_asset_audit(
     "/sessions/{session_id}/complete",
     response_model=AuditSessionResponse,
     status_code=status.HTTP_200_OK,
-    summary="Complete Audit Session",
-    description="""
-    Completes an audit session.
-
-    Frontend Usage:
-    - Employee presses Complete Audit.
-    - Allowed only after every asset has been verified.
-    - Marks the session as COMPLETED.
-    - Automatically schedules the next audit session
-    based on the audit frequency.
-    """
+    summary="[DEPRECATED] Complete Audit Session",
+    deprecated=True
 )
-def complete_audit_session(
+def complete_audit_session_deprecated(
     session_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    """Deprecated: Use /{audit_id}/complete instead."""
     return AuditService.complete_audit_session(
         session_id=session_id,
         db=db,
         current_user=current_user
     )
+
+
