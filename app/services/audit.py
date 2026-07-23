@@ -1,5 +1,3 @@
-# app/services/audit.py
-
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status, UploadFile
 from sqlalchemy.orm import Session
@@ -1196,17 +1194,23 @@ class AuditService:
     def _get_location_status(audit_status: AuditResultStatus) -> str:
         """
         Map audit result status to location status.
+        
+        Database location_status column expects:
+        - 'VERIFIED'
+        - 'NEARBY' 
+        - 'OUTSIDE_GEOFENCE'
+        - 'LOCATION_UNKNOWN'
+        
+        This mapping ensures the correct values are saved.
         """
-        if audit_status == AuditResultStatus.IN_PLACE:
-            return "IN_PLACE"
-        elif audit_status == AuditResultStatus.DISLOCATED:
-            return "DISLOCATED"
-        elif audit_status == AuditResultStatus.NOT_FOUND:
-            return "NOT_FOUND"
-        elif audit_status == AuditResultStatus.LOST:
-            return "LOST"
-        else:
-            return "UNKNOWN"
+        mapping = {
+            AuditResultStatus.IN_PLACE: "VERIFIED",
+            AuditResultStatus.DISLOCATED: "OUTSIDE_GEOFENCE",
+            AuditResultStatus.NOT_FOUND: "LOCATION_UNKNOWN",
+            AuditResultStatus.LOST: "LOCATION_UNKNOWN",
+            AuditResultStatus.PENDING: "LOCATION_UNKNOWN",
+        }
+        return mapping.get(audit_status, "LOCATION_UNKNOWN")
 
     # -------------------- MAIN ENDPOINT METHODS --------------------
 
@@ -1585,7 +1589,16 @@ class AuditService:
                 detail="Asset has already been audited."
             )
         
-        # Step 6: Update the existing AuditResult with findings
+        # Step 6: Convert status string to enum for mapping
+        try:
+            status_enum = AuditResultStatus(status)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid audit status: {status}"
+            )
+        
+        # Step 7: Update the existing AuditResult with findings
         audit_result.status = status
         audit_result.condition_status = condition_status
         audit_result.quantity_found = quantity_found
@@ -1593,10 +1606,10 @@ class AuditService:
         audit_result.audit_latitude = audit_latitude
         audit_result.audit_longitude = audit_longitude
         
-        # Step 7: Set location_status using the helper method
-        audit_result.location_status = AuditService._get_location_status(status)
+        # Step 8: Set location_status using the helper method (FIXED)
+        audit_result.location_status = AuditService._get_location_status(status_enum)
         
-        # Step 8: Handle photo upload if provided
+        # Step 9: Handle photo upload if provided
         if photo:
             try:
                 # Generate a unique filename
@@ -1640,14 +1653,17 @@ class AuditService:
         audit_result.audited_by = current_user["id"]
         audit_result.audited_at = datetime.utcnow()
         
-        # Step 9: Commit changes (no need for db.add() since object is already in session)
+        # Step 10: Increment audited_assets count
+        session.audited_assets += 1
+        
+        # Step 11: Commit changes
         db.commit()
         
-        # Step 10: Refresh for latest data
+        # Step 12: Refresh for latest data
         db.refresh(audit_result)
         db.refresh(session)
         
-        # Step 11: Calculate remaining assets and completion percentage
+        # Step 13: Calculate remaining assets and completion percentage
         remaining_assets = session.total_assets - session.audited_assets
         
         completion_percentage = 0.0
@@ -1657,10 +1673,10 @@ class AuditService:
                 2
             )
         
-        # Step 12: Check if all assets are audited (but don't auto-complete)
+        # Step 14: Check if all assets are audited
         is_complete = session.audited_assets >= session.total_assets
         
-        # Step 13: Return response
+        # Step 15: Return response
         return SubmitAssetAuditResponse(
             message="Asset audited successfully.",
             audit_id=session.audit_plan.id,

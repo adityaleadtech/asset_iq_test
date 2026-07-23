@@ -31,6 +31,8 @@ class AuditPlanStatus(str, Enum):
     PAUSED = "PAUSED"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
 
 
 # ==========================================================
@@ -45,7 +47,7 @@ class AuditTargetType(str, Enum):
 
 
 # ==========================================================
-# Audit Result Status (MOVED HERE - BEFORE AuditResultResponse)
+# Audit Result Status
 # ==========================================================
 
 class AuditResultStatus(str, Enum):
@@ -54,7 +56,7 @@ class AuditResultStatus(str, Enum):
     DISLOCATED = "DISLOCATED"
     LOST = "LOST"
     NOT_FOUND = "NOT_FOUND"
-    COMPLETED="COMPLETED"
+    COMPLETED = "COMPLETED"
 
 
 # ==========================================================
@@ -70,11 +72,11 @@ class AuditSessionStatus(str, Enum):
 
 
 # ==========================================================
-# Asset Audit Status (UPDATED - includes PENDING)
+# Asset Audit Status
 # ==========================================================
 
 class AuditAssetStatus(str, Enum):
-    PENDING = "PENDING"      # ✅ ADDED
+    PENDING = "PENDING"
     IN_PLACE = "IN_PLACE"
     DISLOCATED = "DISLOCATED"
     LOST = "LOST"
@@ -82,7 +84,7 @@ class AuditAssetStatus(str, Enum):
 
 
 # ==========================================================
-# Asset Condition
+# Asset Condition Status
 # ==========================================================
 
 class AuditConditionStatus(str, Enum):
@@ -91,3 +93,29 @@ class AuditConditionStatus(str, Enum):
     FAIR = "FAIR"
     DAMAGED = "DAMAGED"
     BROKEN = "BROKEN"
+
+
+# ==========================================================
+# Asset Condition Status (for mobile app - more detailed)
+# ==========================================================
+
+class AssetConditionStatus(str, Enum):
+    """Physical condition of the asset - used by mobile app"""
+    EXCELLENT = "EXCELLENT"
+    GOOD = "GOOD"
+    FAIR = "FAIR"
+    POOR = "POOR"
+    DAMAGED = "DAMAGED"
+    VERY_POOR = "VERY_POOR"
+
+
+# ==========================================================
+# Location Status (for mobile app)
+# ==========================================================
+
+class LocationStatus(str, Enum):
+    """GPS location verification status - used by mobile app"""
+    VERIFIED = "VERIFIED"
+    NEARBY = "NEARBY"
+    OUTSIDE_GEOFENCE = "OUTSIDE_GEOFENCE"
+    LOCATION_UNKNOWN = "LOCATION_UNKNOWN"

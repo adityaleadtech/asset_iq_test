@@ -1,6 +1,4 @@
-# app/routers/audit.py
-
-from fastapi import APIRouter, Depends, Query, status, Form, File, UploadFile
+from fastapi import APIRouter, Depends, Query, status, Form, File, UploadFile, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -21,7 +19,7 @@ from app.schemas.Audit import (
     SubmitAssetAuditResponse,
     AuditSummaryResponse,
 )
-from app.enums.audit_enums import AuditPlanStatus, AuditSessionStatus
+from app.enums.audit_enums import AuditPlanStatus, AuditSessionStatus, AuditResultStatus, AssetConditionStatus
 from app.services.audit import AuditService
 
 router = APIRouter(prefix="/audits", tags=["Audits"])
@@ -277,40 +275,6 @@ def delete_audit(
 # ============================================================
 
 @router.get(
-<<<<<<< Updated upstream
-=======
-    "/my-audits",
-    response_model=list[MyAuditResponse],
-    summary="Get My Audits",
-    description="""
-    📱 Mobile App Only
-
-    Returns all audit sessions assigned to the logged-in auditor.
-
-    Each audit includes:
-    • Audit name
-    • Scheduled date
-    • Status
-    • Total assets
-    • Audited assets
-    • Completion percentage
-
-    This is the first API called after the auditor logs into the mobile application.
-    """
-)
-def get_my_audits(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    print(current_user.id+"_+_+_+_+_+_+_+")
-    return AuditService.get_my_audits_simple(
-        db=db,
-        current_user=current_user
-    )
-
-
-@router.get(
->>>>>>> Stashed changes
     "/{audit_id}/mobile",
     response_model=AuditDetailsResponse,
     summary="Get Audit Details (Mobile)",
@@ -460,21 +424,107 @@ def get_asset_details(
     • Asset image
 
     The uploaded image is stored and linked to the audit result.
+
+    **Audit Status Options:**
+    - `IN_PLACE`: Asset is physically present and in its designated location
+    - `DISLOCATED`: Asset is found but not in its designated location
+    - `NOT_FOUND`: Asset cannot be located
+    - `LOST`: Asset is confirmed lost
+
+    **Condition Status Options:**
+    - `EXCELLENT`: Asset is in perfect condition with no defects
+    - `GOOD`: Asset has minor wear and tear but is fully functional
+    - `FAIR`: Asset has noticeable defects but is operational
+    - `POOR`: Asset has significant defects affecting functionality
+    - `DAMAGED`: Asset is damaged and requires repair or replacement
+    - `VERY_POOR`: Asset is severely damaged and not operational
+
+    **Location Status (Auto-calculated based on GPS):**
+    - `VERIFIED`: Asset is within geofence radius
+    - `NEARBY`: Asset is within 2x geofence radius
+    - `OUTSIDE_GEOFENCE`: Asset is outside geofence
+    - `LOCATION_UNKNOWN`: Location cannot be determined
+
+    **Quantity Found:**
+    - Must be greater than 0
+    - Should match expected quantity based on inventory records
     """
 )
 def submit_asset_audit(
     audit_id: str,
     asset_id: str,
-    status: str = Form(...),
-    condition_status: str = Form(...),
-    quantity_found: int = Form(...),
-    remarks: str | None = Form(None),
-    audit_latitude: float = Form(...),
-    audit_longitude: float = Form(...),
-    photo: UploadFile | None = File(None),
+    status: str = Form(
+        ...,
+        description="Audit status: IN_PLACE, DISLOCATED, NOT_FOUND, LOST",
+        example="IN_PLACE"
+    ),
+    condition_status: str = Form(
+        ...,
+        description="Asset condition: EXCELLENT, GOOD, FAIR, POOR, DAMAGED, VERY_POOR",
+        example="GOOD"
+    ),
+    quantity_found: int = Form(
+        ...,
+        description="Quantity of assets found (must be > 0)",
+        ge=1,
+        example=5
+    ),
+    remarks: str | None = Form(
+        None,
+        description="Optional remarks or notes about the audit",
+        example="Asset is in good condition but needs maintenance"
+    ),
+    audit_latitude: float = Form(
+        ...,
+        description="GPS latitude of the audit location (must be between -90 and 90)",
+        ge=-90,
+        le=90,
+        example=12.9716
+    ),
+    audit_longitude: float = Form(
+        ...,
+        description="GPS longitude of the audit location (must be between -180 and 180)",
+        ge=-180,
+        le=180,
+        example=77.5946
+    ),
+    photo: UploadFile | None = File(
+        None,
+        description="Photo evidence of the asset (JPEG, PNG, or WebP format)"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Validate latitude
+    if not (-90 <= audit_latitude <= 90):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid latitude: {audit_latitude}. Must be between -90 and 90"
+        )
+    
+    # Validate longitude
+    if not (-180 <= audit_longitude <= 180):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid longitude: {audit_longitude}. Must be between -180 and 180"
+        )
+    
+    # Validate audit status
+    valid_statuses = ["IN_PLACE", "DISLOCATED", "NOT_FOUND", "LOST"]
+    if status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status: {status}. Must be one of {valid_statuses}"
+        )
+    
+    # Validate condition status
+    valid_conditions = ["EXCELLENT", "GOOD", "FAIR", "POOR", "DAMAGED", "VERY_POOR"]
+    if condition_status not in valid_conditions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid condition status: {condition_status}. Must be one of {valid_conditions}"
+        )
+    
     return AuditService.submit_asset_audit(
         db=db,
         audit_id=audit_id,
