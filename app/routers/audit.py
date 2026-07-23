@@ -277,6 +277,40 @@ def delete_audit(
 # ============================================================
 
 @router.get(
+<<<<<<< Updated upstream
+=======
+    "/my-audits",
+    response_model=list[MyAuditResponse],
+    summary="Get My Audits",
+    description="""
+    📱 Mobile App Only
+
+    Returns all audit sessions assigned to the logged-in auditor.
+
+    Each audit includes:
+    • Audit name
+    • Scheduled date
+    • Status
+    • Total assets
+    • Audited assets
+    • Completion percentage
+
+    This is the first API called after the auditor logs into the mobile application.
+    """
+)
+def get_my_audits(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    print(current_user.id+"_+_+_+_+_+_+_+")
+    return AuditService.get_my_audits_simple(
+        db=db,
+        current_user=current_user
+    )
+
+
+@router.get(
+>>>>>>> Stashed changes
     "/{audit_id}/mobile",
     response_model=AuditDetailsResponse,
     summary="Get Audit Details (Mobile)",
