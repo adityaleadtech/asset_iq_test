@@ -1910,7 +1910,7 @@ class AuditService:
             db.query(AuditPlan)
             .filter(
                 AuditPlan.id == audit_id,
-                AuditPlan.is_deleted == False
+                AuditPlan.is_active == True
             )
             .first()
         )
@@ -1923,8 +1923,8 @@ class AuditService:
 
         # Client Admin can only view reports for their own client
         if (
-            current_user.role == UserRole.CLIENT_ADMIN
-            and audit.client_id != current_user.client_id
+            current_user["role"] == "CLIENT_ADMIN"
+            and audit.client_id != current_user["client_id"]
         ):
             raise HTTPException(
                 status_code=403,
