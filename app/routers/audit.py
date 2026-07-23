@@ -14,7 +14,6 @@ from app.schemas.Audit import (
     AuditPlanResponse,
     AuditPlanUpdate,
     AuditSessionResponse,
-    AuditSessionListResponse,
     AuditDashboardResponse,
     MyAuditResponse,
     ScanAssetRequest,
@@ -22,7 +21,7 @@ from app.schemas.Audit import (
     SubmitAssetAuditResponse,
     AuditSummaryResponse,
 )
-from app.enums.audit_enums import AuditPlanStatus
+from app.enums.audit_enums import AuditPlanStatus, AuditSessionStatus
 from app.services.audit import AuditService
 
 router = APIRouter(prefix="/audits", tags=["Audits"])
@@ -82,7 +81,7 @@ def create_audit(
     Supports:
     • Pagination
     • Search by audit name
-    • Status filtering
+    • Status filtering (planned, in_progress, completed)
 
     Platform Admins can view audits across all clients.
 
@@ -108,9 +107,9 @@ def get_audits_router(
 
 
 @router.get(
-    "/plan/{audit_id}",
+    "/{audit_id}",
     response_model=AuditPlanResponse,
-    summary="Get Audit Plan Details",
+    summary="Get Audit Plan Details (Admin)",
     description="""
     🌐 Web Admin Only
 
@@ -127,7 +126,7 @@ def get_audits_router(
     Useful for monitoring audit progress and reviewing previous audit executions.
     """
 )
-def get_audit_plan_by_id(
+def get_audit_by_id_admin(
     audit_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -234,42 +233,6 @@ def audit_dashboard(
     )
 
 
-@router.get(
-    "/history",
-    response_model=AuditSessionListResponse,
-    summary="Audit History",
-    description="""
-    🌐 Web Admin Only
-
-    Returns completed audit sessions.
-
-    Supports pagination.
-
-    Each record contains:
-    • Audit name
-    • Assigned auditor
-    • Completion date
-    • Total assets
-    • Audited assets
-    • Session status
-
-    Useful for reviewing previously completed audits.
-    """
-)
-def audit_history(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    page: int = Query(1, ge=1, description="Page number"),
-    size: int = Query(10, ge=1, le=100, description="Items per page")
-):
-    return AuditService.audit_history(
-        db=db,
-        current_user=current_user,
-        page=page,
-        size=size
-    )
-
-
 # ============================================================
 # 📱 MOBILE AUDITOR ENDPOINTS
 # ============================================================
@@ -305,13 +268,13 @@ def get_my_audits(
 
 
 @router.get(
-    "/{audit_id}",
+    "/{audit_id}/mobile",
     response_model=AuditDetailsResponse,
-    summary="Get Audit Details",
+    summary="Get Audit Details (Mobile)",
     description="""
     📱 Mobile App Only
 
-    Returns detailed information about a selected audit.
+    Returns detailed information about a selected audit for the mobile app.
 
     Includes:
     • Audit information
@@ -324,7 +287,7 @@ def get_my_audits(
     The mobile application calls this endpoint before starting the audit.
     """
 )
-def get_audit_details(
+def get_audit_details_mobile(
     audit_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -400,6 +363,37 @@ def scan_asset(
         db=db,
         audit_id=audit_id,
         asset_id=request.asset_id,
+        current_user=current_user
+    )
+
+
+@router.get(
+    "/{audit_id}/assets/{asset_id}",
+    response_model=AuditAssetDetailsResponse,
+    summary="Get Asset Details",
+    description="""
+    📱 Mobile App Only
+
+    Returns complete information about a scanned asset.
+
+    This endpoint is called immediately after a successful scan to
+    populate the editable audit form.
+
+    The returned information is read-only. The auditor only edits
+    the audit findings such as condition, quantity, remarks,
+    photo, and GPS location.
+    """
+)
+def get_asset_details(
+    audit_id: str,
+    asset_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return AuditService.get_asset_details(
+        db=db,
+        audit_id=audit_id,
+        asset_id=asset_id,
         current_user=current_user
     )
 
@@ -519,36 +513,5 @@ def complete_audit(
     return AuditService.complete_audit_session_manual(
         db=db,
         audit_id=audit_id,
-        current_user=current_user
-    )
-
-
-@router.get(
-    "/{audit_id}/assets/{asset_id}",
-    response_model=AuditAssetDetailsResponse,
-    summary="Get Asset Details",
-    description="""
-    📱 Mobile App Only
-
-    Returns complete information about a scanned asset.
-
-    This endpoint is called immediately after a successful scan to
-    populate the editable audit form.
-
-    The returned information is read-only. The auditor only edits
-    the audit findings such as condition, quantity, remarks,
-    photo, and GPS location.
-    """
-)
-def get_asset_details(
-    audit_id: str,
-    asset_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    return AuditService.get_asset_details(
-        db=db,
-        audit_id=audit_id,
-        asset_id=asset_id,
         current_user=current_user
     )
