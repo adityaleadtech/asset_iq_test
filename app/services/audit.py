@@ -1878,7 +1878,7 @@ class AuditService:
         return AuditAssetDetailsResponse(
             asset_id=asset.id,
             asset_name=asset.name,
-            asset_code=getattr(asset, "asset_code", None),
+            asset_code=str(asset.id),  # ✅ FIXED: Use asset ID as asset_code
             serial_number=asset.serial_number,
             category=asset.category.name if asset.category else None,
             department=asset.department.name if asset.department else None,
@@ -2060,11 +2060,11 @@ class AuditService:
             asset_details.append(
                 AssetVerificationDetail(
                     asset_id=str(asset.id),
-                    asset_code=asset.asset_code,
+                    asset_code=str(asset.id),  # ✅ FIXED: Use asset ID as asset_code
                     asset_name=asset.name,
                     serial_number=asset.serial_number,
-                    manufacturer=asset.manufacturer,
-                    model=asset.model,
+                    manufacturer=getattr(asset, "manufacturer", None),
+                    model=getattr(asset, "model", None),
                     category=(
                         asset.category.name
                         if asset.category
@@ -2092,7 +2092,7 @@ class AuditService:
                     ),
                     audit_status=result.status,
                     condition_status=result.condition_status,
-                    quantity_expected=result.quantity_expected,
+                    quantity_expected=getattr(result, "quantity_expected", 0),
                     quantity_found=result.quantity_found,
                     location_status=result.location_status,
                     audited_by=(
@@ -2102,8 +2102,8 @@ class AuditService:
                     ),
                     audited_at=result.audited_at,
                     remarks=result.remarks,
-                    created_image_url=asset.created_image_url,
-                    latest_image_url=asset.latest_image_url,
+                    created_image_url=getattr(asset, "created_image_url", None),
+                    latest_image_url=getattr(asset, "latest_image_url", None),
                     audit_image_url=result.photo_url,
                     expected_latitude=result.expected_latitude,
                     expected_longitude=result.expected_longitude,
@@ -2139,7 +2139,7 @@ class AuditService:
             ),
             audit_information=AuditInformation(
                 audit_id=str(audit.id),
-                audit_code=audit.audit_code,
+                audit_code=getattr(audit, "audit_code", str(audit.id)),  # ✅ FIXED
                 audit_name=audit.name,
                 audit_status=session.status,
                 audit_type=audit_type,
