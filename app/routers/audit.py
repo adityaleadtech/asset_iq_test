@@ -1,6 +1,6 @@
 # app/routers/audit.py
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, Form, File, UploadFile
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -9,6 +9,7 @@ from app.models.users import User
 from app.schemas.Audit import (
     AuditDetailsResponse,
     AuditPlanCreate,
+    AuditAssetDetailsResponse,
     AuditPlanListResponse,
     AuditPlanResponse,
     AuditPlanUpdate,
@@ -18,7 +19,6 @@ from app.schemas.Audit import (
     MyAuditResponse,
     ScanAssetRequest,
     ScanAssetResponse,
-    SubmitAssetAuditRequest,
     SubmitAssetAuditResponse,
     AuditSummaryResponse,
 )
@@ -404,7 +404,7 @@ def scan_asset(
     )
 
 
-@router.post(
+@router.patch(
     "/{audit_id}/assets/{asset_id}",
     response_model=SubmitAssetAuditResponse,
     status_code=status.HTTP_200_OK,
@@ -412,26 +412,29 @@ def scan_asset(
     description="""
     📱 Mobile App Only
 
-    Records the audit findings for a scanned asset.
+    Updates the audit result for a scanned asset.
 
-    Information saved:
+    The auditor submits:
     • Audit status
-    • Physical condition
+    • Asset condition
     • Quantity found
-    • GPS coordinates
-    • Photo
     • Remarks
+    • GPS location
+    • Asset image
 
-    The existing pending AuditResult created during audit start is updated
-    instead of creating a new record.
-
-    The audit progress is automatically updated after each submission.
+    The uploaded image is stored and linked to the audit result.
     """
 )
 def submit_asset_audit(
     audit_id: str,
     asset_id: str,
-    request: SubmitAssetAuditRequest,
+    status: str = Form(...),
+    condition_status: str = Form(...),
+    quantity_found: int = Form(...),
+    remarks: str | None = Form(None),
+    audit_latitude: float = Form(...),
+    audit_longitude: float = Form(...),
+    photo: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -439,7 +442,13 @@ def submit_asset_audit(
         db=db,
         audit_id=audit_id,
         asset_id=asset_id,
-        request=request,
+        status=status,
+        condition_status=condition_status,
+        quantity_found=quantity_found,
+        remarks=remarks,
+        audit_latitude=audit_latitude,
+        audit_longitude=audit_longitude,
+        photo=photo,
         current_user=current_user
     )
 
@@ -510,5 +519,36 @@ def complete_audit(
     return AuditService.complete_audit_session_manual(
         db=db,
         audit_id=audit_id,
+        current_user=current_user
+    )
+
+
+@router.get(
+    "/{audit_id}/assets/{asset_id}",
+    response_model=AuditAssetDetailsResponse,
+    summary="Get Asset Details",
+    description="""
+    📱 Mobile App Only
+
+    Returns complete information about a scanned asset.
+
+    This endpoint is called immediately after a successful scan to
+    populate the editable audit form.
+
+    The returned information is read-only. The auditor only edits
+    the audit findings such as condition, quantity, remarks,
+    photo, and GPS location.
+    """
+)
+def get_asset_details(
+    audit_id: str,
+    asset_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return AuditService.get_asset_details(
+        db=db,
+        audit_id=audit_id,
+        asset_id=asset_id,
         current_user=current_user
     )
