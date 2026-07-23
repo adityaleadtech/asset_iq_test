@@ -119,7 +119,20 @@ class AuditResultRequest(BaseModel):
     audit_latitude: Decimal
     audit_longitude: Decimal
 
+class MyAuditResponse(BaseModel):
+    audit_id: str
+    session_id: str
+    audit_name: str
+    status: str
+    start_date: date
+    end_date: date | None
+    scheduled_date: date
+    total_assets: int
+    audited_assets: int
+    completion_percentage: float
 
+    model_config = ConfigDict(from_attributes=True)
+    
 class MyAuditSessionResponse(BaseModel):
     id: UUID
     audit_plan_id: UUID

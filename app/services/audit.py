@@ -23,6 +23,7 @@ from app.schemas.Audit import (
     AuditResultRequest,
     AuditResultResponse,
     AuditDashboardResponse,
+    MyAuditResponse,
 )
 
 from app.enums.audit_enums import (
@@ -1607,3 +1608,39 @@ class AuditService:
         )
         for result in results
     ]
+    def get_my_audits(
+    db: Session,
+    current_user: User
+):
+        sessions = (
+        db.query(AuditSession)
+        .join(AuditPlan)
+        .filter(
+            AuditSession.assigned_to == current_user.id
+        )
+        .all()
+    )
+        response = []
+        for session in sessions:
+            percentage = 0
+            if session.total_assets:
+                percentage = round(
+                (session.audited_assets / session.total_assets) * 100,
+                2
+            )
+
+        response.append(
+            MyAuditResponse(
+                audit_id=session.audit_plan.id,
+                session_id=session.id,
+                audit_name=session.audit_plan.name,
+                status=session.status,
+                start_date=session.audit_plan.start_date,
+                end_date=session.audit_plan.end_date,
+                scheduled_date=session.scheduled_date,
+                total_assets=session.total_assets,
+                audited_assets=session.audited_assets,
+                completion_percentage=percentage
+            )
+        )
+        return response

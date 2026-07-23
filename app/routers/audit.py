@@ -14,6 +14,7 @@ from app.schemas.Audit import (
     AuditResultRequest,
     AuditResultResponse,
     AuditDashboardResponse,
+    MyAuditResponse,
 )
 from app.enums.audit_enums import AuditPlanStatus, AuditSessionStatus
 from app.services.audit import AuditService
@@ -81,32 +82,16 @@ def get_audits_router(
 
 
 @router.get(
-    "/my",
-    response_model=AuditSessionListResponse,
-    summary="Get My Assigned Audits",
-    description="""
-    Returns audit sessions assigned to the logged-in user.
-
-    Frontend Usage:
-    - Home screen of the mobile application.
-    - Displays assigned audits.
-    - Employee selects one audit to begin.
-    - Supports filtering by audit session status.
-    """
+    "/my-audits",
+    response_model=list[MyAuditResponse]
 )
 def get_my_audits(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    page: int = Query(1, ge=1, description="Page number"),
-    size: int = Query(10, ge=1, le=100, description="Items per page"),
-    status: Optional[AuditSessionStatus] = Query(None, description="Filter by session status")
+    current_user=Depends(get_current_user)
 ):
     return AuditService.get_my_audits(
-        db=db,
-        current_user=current_user,
-        page=page,
-        size=size,
-        status=status
+        db,
+        current_user
     )
 
 

@@ -54,6 +54,7 @@ class AuditResultStatus(str, Enum):
     DISLOCATED = "DISLOCATED"
     LOST = "LOST"
     NOT_FOUND = "NOT_FOUND"
+    COMPLETED="COMPLETED"
 
 
 # ==========================================================
