@@ -402,17 +402,17 @@ class AuditService:
         # Role Filter
         # ---------------------------------
 
-        if current_user.role == "PLATFORM_ADMIN":
+        if current_user["role"] == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user.role == "CLIENT_ADMIN":
+        elif current_user["role"] == "CLIENT_ADMIN":
 
             query = query.filter(
                 AuditPlan.client_id == current_user.client_id
             )
 
-        elif current_user.role == "AUDITOR":
+        elif current_user["role"] == "AUDITOR":
 
             query = query.filter(
                 AuditPlan.auditor_id == current_user.id
