@@ -10,11 +10,18 @@ class AuditFrequencyUnit(str, Enum):
     WEEK = "WEEK"
     MONTH = "MONTH"
 
+
+# ==========================================================
+# Audit Location Status
+# ==========================================================
+
 class AuditLocationStatus(str, Enum):
     VERIFIED = "VERIFIED"
     NEARBY = "NEARBY"
     OUTSIDE_GEOFENCE = "OUTSIDE_GEOFENCE"
     LOCATION_UNKNOWN = "LOCATION_UNKNOWN"
+
+
 # ==========================================================
 # Audit Plan Status
 # ==========================================================
@@ -37,11 +44,18 @@ class AuditTargetType(str, Enum):
     ASSET = "ASSET"
 
 
-from enum import Enum
+# ==========================================================
+# Audit Result Status (MOVED HERE - BEFORE AuditResultResponse)
+# ==========================================================
 
 class AuditResultStatus(str, Enum):
     PENDING = "PENDING"
-    COMPLETED = "COMPLETED"
+    IN_PLACE = "IN_PLACE"
+    DISLOCATED = "DISLOCATED"
+    LOST = "LOST"
+    NOT_FOUND = "NOT_FOUND"
+
+
 # ==========================================================
 # Audit Session Status
 # ==========================================================
@@ -55,10 +69,11 @@ class AuditSessionStatus(str, Enum):
 
 
 # ==========================================================
-# Asset Audit Status
+# Asset Audit Status (UPDATED - includes PENDING)
 # ==========================================================
 
 class AuditAssetStatus(str, Enum):
+    PENDING = "PENDING"      # ✅ ADDED
     IN_PLACE = "IN_PLACE"
     DISLOCATED = "DISLOCATED"
     LOST = "LOST"

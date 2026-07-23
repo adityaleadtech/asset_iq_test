@@ -1549,41 +1549,61 @@ class AuditService:
             size=size
 
         )
-
     @staticmethod
     def get_session_assets(
-        session_id: str,
-        db: Session,
-        current_user
-    ):
+    session_id: str,
+    db: Session,
+    current_user
+):
         session = (
-            db.query(AuditSession)
-            .filter(AuditSession.id == session_id)
-            .first()
-        )
-        
+        db.query(AuditSession)
+        .filter(AuditSession.id == session_id)
+        .first()
+    )
         if not session:
             raise HTTPException(
-                status_code=404,
-                detail="Audit session not found."
-            )
-            
+            status_code=404,
+            detail="Audit session not found."
+        )
         if session.assigned_to != current_user["id"]:
             raise HTTPException(
-                status_code=403,
-                detail="Permission denied."
-            )
-            
-        results = (
-            db.query(AuditResult)
-            .join(Asset)
-            .filter(
-                AuditResult.audit_session_id == session_id
-            )
-            .all()
+            status_code=403,
+            detail="Permission denied."
         )
-        
+        results = (
+        db.query(AuditResult)
+        .join(Asset)
+        .filter(
+            AuditResult.audit_session_id == session_id
+        )
+        .all()
+        )
         return [
-            AuditResultResponse.model_validate(result)
-            for result in results
-        ]
+        AuditResultResponse(
+            asset_id=result.asset_id,
+            asset_name=result.asset.name,
+            serial_number=result.asset.serial_number,
+            
+            status=result.status,
+            condition_status=result.condition_status,
+            
+            quantity_expected=result.quantity_expected,
+            quantity_found=result.quantity_found,
+            
+            remarks=result.remarks,
+            photo_url=result.photo_url,
+            
+            expected_location_id=result.expected_location_id,
+            expected_latitude=result.expected_latitude,
+            expected_longitude=result.expected_longitude,
+            
+            audit_latitude=result.audit_latitude,
+            audit_longitude=result.audit_longitude,
+            
+            location_status=result.location_status,
+            
+            audited_by=result.audited_by,
+            audited_at=result.audited_at,
+        )
+        for result in results
+    ]
