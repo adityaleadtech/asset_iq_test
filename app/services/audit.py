@@ -1,9 +1,11 @@
 # app/services/audit.py
 
 from datetime import datetime, timedelta
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, UploadFile
 from sqlalchemy.orm import Session
 from typing import Dict
+import cloudinary.uploader
+import uuid
 
 from app.models.clients import Client
 from app.models.users import User
@@ -17,6 +19,7 @@ from app.models.auditsession import AuditSession
 from app.models.AuditResult import AuditResult
 
 from app.schemas.Audit import (
+    AuditAssetDetailsResponse,
     AuditAssetResponse,
     AuditDetailsResponse,
     AuditPlanCreate,
@@ -29,7 +32,6 @@ from app.schemas.Audit import (
     AuditSummaryResponse,
     MyAuditResponse,
     ScanAssetResponse,
-    SubmitAssetAuditRequest,
     SubmitAssetAuditResponse,
 )
 
@@ -1469,7 +1471,14 @@ class AuditService:
         current_user: User
     ) -> ScanAssetResponse:
         """
-        Scan an asset by its ID during an audit.
+        Validate a scanned asset.
+
+        This endpoint validates that the scanned asset:
+        - Belongs to the audit
+        - Exists and is active
+        - Has not already been audited
+
+        Returns asset details for verification before submitting the audit result.
         """
         
         # Verify audit session exists and is active
@@ -1482,10 +1491,10 @@ class AuditService:
                 detail="Audit session is not active."
             )
         
-        # Get and verify asset
+        # Verify asset belongs to audit
         asset = AuditService.get_asset_and_verify(db, asset_id, audit_id)
         
-        # Check if already audited - look for non-PENDING status
+        # Check if already audited
         audit_result = (
             db.query(AuditResult)
             .filter(
@@ -1495,12 +1504,19 @@ class AuditService:
             .first()
         )
         
-        # Asset is already audited if it exists AND status is not PENDING
-        already_audited = (
-            audit_result is not None and 
-            audit_result.status != AuditResultStatus.PENDING
-        )
+        if not audit_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asset not found in this audit."
+            )
         
+        if audit_result.status != AuditResultStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Asset has already been audited."
+            )
+        
+        # Return asset details
         return ScanAssetResponse(
             asset_id=asset.id,
             asset_name=asset.name,
@@ -1508,7 +1524,7 @@ class AuditService:
             qr_code_url=asset.qr_code_url,
             location=asset.location.name if asset.location else None,
             expected_condition=asset.asset_condition,
-            already_audited=already_audited
+            already_audited=False  # Since we passed the PENDING check
         )
 
     @staticmethod
@@ -1516,7 +1532,13 @@ class AuditService:
         db: Session,
         audit_id: str,
         asset_id: str,
-        request: SubmitAssetAuditRequest,
+        status: str,
+        condition_status: str,
+        quantity_found: int,
+        remarks: str | None,
+        audit_latitude: float,
+        audit_longitude: float,
+        photo: UploadFile | None,
         current_user: User
     ) -> SubmitAssetAuditResponse:
         """
@@ -1563,28 +1585,68 @@ class AuditService:
             )
         
         # Step 6: Update the existing AuditResult with findings
-        audit_result.status = request.status
-        audit_result.condition_status = request.condition_status
-        audit_result.quantity_found = request.quantity_found
-        audit_result.remarks = request.remarks
-        audit_result.photo_url = request.photo_url
-        audit_result.audit_latitude = request.audit_latitude
-        audit_result.audit_longitude = request.audit_longitude
+        audit_result.status = status
+        audit_result.condition_status = condition_status
+        audit_result.quantity_found = quantity_found
+        audit_result.remarks = remarks
+        audit_result.audit_latitude = audit_latitude
+        audit_result.audit_longitude = audit_longitude
         
         # Step 7: Set location_status using the helper method
-        audit_result.location_status = AuditService._get_location_status(request.status)
+        audit_result.location_status = AuditService._get_location_status(status)
+        
+        # Step 8: Handle photo upload if provided
+        if photo:
+            try:
+                # Generate a unique filename
+                file_extension = photo.filename.split('.')[-1] if photo.filename else 'jpg'
+                filename = f"audit_{audit_id}_{asset_id}_{uuid.uuid4().hex[:8]}.{file_extension}"
+                
+                print(f"UPLOADING AUDIT PHOTO: {filename}")
+                
+                # Upload to Cloudinary
+                upload_result = cloudinary.uploader.upload(
+                    photo.file,
+                    folder=f"assetiq/{asset.client_id}/audits/{audit_id}",
+                    public_id=filename,
+                    resource_type="image",
+                    overwrite=True
+                )
+                
+                # Get the secure URL
+                image_url = upload_result.get('secure_url')
+                
+                if not image_url:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Cloudinary did not return an image URL"
+                    )
+                
+                print(f"AUDIT PHOTO UPLOADED: {image_url}")
+                
+                # Save the URL to audit result
+                audit_result.photo_url = image_url
+                
+            except HTTPException:
+                raise
+            except Exception as error:
+                print(f"AUDIT PHOTO UPLOAD FAILED: {str(error)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to upload audit photo: {str(error)}"
+                )
         
         audit_result.audited_by = current_user.id
         audit_result.audited_at = datetime.utcnow()
         
-        # Step 8: Commit changes (no need for db.add() since object is already in session)
+        # Step 9: Commit changes (no need for db.add() since object is already in session)
         db.commit()
         
-        # Step 9: Refresh for latest data
+        # Step 10: Refresh for latest data
         db.refresh(audit_result)
         db.refresh(session)
         
-        # Step 10: Calculate remaining assets and completion percentage
+        # Step 11: Calculate remaining assets and completion percentage
         remaining_assets = session.total_assets - session.audited_assets
         
         completion_percentage = 0.0
@@ -1594,10 +1656,10 @@ class AuditService:
                 2
             )
         
-        # Step 11: Check if all assets are audited (but don't auto-complete)
+        # Step 12: Check if all assets are audited (but don't auto-complete)
         is_complete = session.audited_assets >= session.total_assets
         
-        # Step 12: Return response
+        # Step 13: Return response
         return SubmitAssetAuditResponse(
             message="Asset audited successfully.",
             audit_id=session.audit_plan.id,
@@ -1754,4 +1816,54 @@ class AuditService:
             dislocated=dislocated,
             not_found=not_found,
             lost=lost,
+        )
+
+    @staticmethod
+    def get_asset_details(
+        db: Session,
+        audit_id: str,
+        asset_id: str,
+        current_user: User
+    ) -> AuditAssetDetailsResponse:
+        """
+        Get detailed information about a specific asset within an audit.
+        
+        This endpoint returns comprehensive asset details including:
+        - Basic asset information (ID, name, code, serial number)
+        - Category, department, and location
+        - Manufacturer and model
+        - Expected quantity and condition
+        - Image URL
+        
+        Used by the mobile app after a successful scan to display asset details
+        before the auditor submits the audit result.
+        """
+        
+        # Verify audit belongs to current user
+        AuditService.get_audit_session(
+            db=db,
+            audit_id=audit_id,
+            current_user=current_user
+        )
+
+        # Verify asset belongs to audit
+        asset = AuditService.get_asset_and_verify(
+            db=db,
+            asset_id=asset_id,
+            audit_id=audit_id
+        )
+
+        return AuditAssetDetailsResponse(
+            asset_id=asset.id,
+            asset_name=asset.name,
+            asset_code=getattr(asset, "asset_code", None),
+            serial_number=asset.serial_number,
+            category=asset.category.name if asset.category else None,
+            department=asset.department.name if asset.department else None,
+            location=asset.location.name if asset.location else None,
+            manufacturer=getattr(asset, "manufacturer", None),
+            model=getattr(asset, "model", None),
+            expected_quantity=getattr(asset, "quantity", None),
+            expected_condition=str(asset.asset_condition) if asset.asset_condition else None,
+            image_url=getattr(asset, "image_url", None)
         )

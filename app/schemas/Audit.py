@@ -259,14 +259,6 @@ class AuditSessionListResponse(BaseModel):
 class ScanAssetRequest(BaseModel):
     asset_id: str
 
-class ScanAssetResponse(BaseModel):
-    asset_id: str
-    asset_name: str
-    serial_number: str | None = None
-    qr_code_url: str | None = None
-    location: str | None = None
-    expected_condition: str | None = None
-    already_audited: bool
 
 class SubmitAssetAuditRequest(BaseModel):
     status: AuditResultStatus
@@ -306,6 +298,38 @@ class SubmitAssetAuditResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class ScanAssetResponse(BaseModel):
+    success: bool
+    message: str
+    asset_id: str
+
+
+
+class AuditAssetDetailsResponse(BaseModel):
+    asset_id: str
+
+    name: str
+    description: str | None = None
+
+    serial_number: str | None = None
+
+    manufacturer: str | None = None
+    model: str | None = None
+
+    category: str | None = None
+    asset_type: str | None = None
+    department: str | None = None
+    location: str | None = None
+
+    current_condition: str | None = None
+
+    qr_code_url: str | None = None
+    barcode_url: str | None = None
+
+    latest_image_url: str | None = None
+
+    current_latitude: float | None = None
+    current_longitude: float |None = None
 
 class AuditSummaryResponse(BaseModel):
     audit_id: str
