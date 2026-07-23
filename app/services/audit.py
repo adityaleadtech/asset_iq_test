@@ -2113,6 +2113,21 @@ class AuditService:
             )
 
         # ============================================================
+        # Get user name - FIXED: Handle missing 'full_name' key
+        # ============================================================
+        
+        # Try multiple possible keys for the user's name
+        generated_by = (
+            current_user.get("full_name") or
+            current_user.get("fullname") or
+            current_user.get("name") or
+            current_user.get("username") or
+            current_user.get("email") or
+            current_user.get("user_id") or
+            str(current_user.get("id", "Unknown User"))
+        )
+
+        # ============================================================
         # Return Response
         # ============================================================
         
@@ -2120,7 +2135,7 @@ class AuditService:
             report_information=AuditReportInformation(
                 report_id=str(uuid.uuid4()),
                 generated_at=datetime.utcnow(),
-                generated_by=current_user["full_name"],
+                generated_by=generated_by,  # ✅ FIXED
             ),
             audit_information=AuditInformation(
                 audit_id=str(audit.id),
