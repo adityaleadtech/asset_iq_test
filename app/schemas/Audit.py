@@ -308,7 +308,7 @@ class ScanAssetResponse(BaseModel):
 class AuditAssetDetailsResponse(BaseModel):
     asset_id: str
 
-    name: str
+    name: str | None=None
     description: str | None = None
 
     serial_number: str | None = None

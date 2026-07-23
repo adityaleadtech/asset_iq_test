@@ -1290,11 +1290,7 @@ class AuditService:
         db: Session,
         current_user: User
     ):
-<<<<<<< Updated upstream
-        print("called++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-=======
         print("called")
->>>>>>> Stashed changes
         sessions = (
             db.query(AuditSession)
             .join(AuditPlan)
@@ -1483,9 +1479,7 @@ class AuditService:
         - Exists and is active
         - Has not already been audited
 
-        Returns a simple success response with asset ID.
-        Detailed asset information is available via:
-        GET /audits/{audit_id}/assets/{asset_id}
+        Returns asset details for verification before submitting the audit result.
         """
         
         # Verify audit session exists and is active
@@ -1523,11 +1517,15 @@ class AuditService:
                 detail="Asset has already been audited."
             )
         
-        # ✅ Return only the fields expected by ScanAssetResponse
+        # Return asset details
         return ScanAssetResponse(
-            success=True,
-            message="Asset validated successfully.",
-            asset_id=asset.id
+            asset_id=asset.id,
+            asset_name=asset.name,
+            serial_number=asset.serial_number,
+            qr_code_url=asset.qr_code_url,
+            location=asset.location.name if asset.location else None,
+            expected_condition=asset.asset_condition,
+            already_audited=False  # Since we passed the PENDING check
         )
 
     @staticmethod
