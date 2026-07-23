@@ -40,6 +40,7 @@ class TrackingSession(Base):
         Enum(
             "ACTIVE",
             "STOPPED",
+            "COMPLETED",
             name="tracking_session_status"
         ),
         nullable=False,

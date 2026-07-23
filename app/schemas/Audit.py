@@ -15,6 +15,51 @@ from app.enums.audit_enums import (
     AuditConditionStatus,
     AuditResultStatus,  # ✅ ADDED
 )
+from datetime import date
+from pydantic import BaseModel, ConfigDict
+
+
+class AuditAssetResponse(BaseModel):
+    asset_id: str
+    asset_name: str
+    serial_number: str | None = None
+    qr_code_url: str | None = None
+    location: str | None = None
+    audit_status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditDetailsResponse(BaseModel):
+    audit_id: str
+    session_id: str
+    audit_name: str
+    description: str | None = None
+
+    status: str
+
+    scheduled_date: date
+    start_date: date
+    end_date: date | None = None
+
+    total_assets: int
+    audited_assets: int
+    completion_percentage: float
+
+    assets: list[AuditAssetResponse]
+
+    model_config = ConfigDict(from_attributes=True)
+
+class AuditAssetResponse(BaseModel):
+    asset_id: str
+    asset_name: str
+    serial_number: str | None
+    qr_code_url: str | None
+    location: str | None
+    audit_status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 
 # ==========================================================
@@ -132,7 +177,7 @@ class MyAuditResponse(BaseModel):
     completion_percentage: float
 
     model_config = ConfigDict(from_attributes=True)
-    
+
 class MyAuditSessionResponse(BaseModel):
     id: UUID
     audit_plan_id: UUID
@@ -207,3 +252,75 @@ class AuditSessionListResponse(BaseModel):
     page: int
     size: int
     items: list[AuditSessionResponse]
+
+
+
+
+class ScanAssetRequest(BaseModel):
+    asset_id: str
+
+class ScanAssetResponse(BaseModel):
+    asset_id: str
+    asset_name: str
+    serial_number: str | None = None
+    qr_code_url: str | None = None
+    location: str | None = None
+    expected_condition: str | None = None
+    already_audited: bool
+
+class SubmitAssetAuditRequest(BaseModel):
+    status: AuditResultStatus
+    condition_status: str | None = None
+    quantity_found: int = 1
+    remarks: str | None = None
+    audit_latitude: float | None = None
+    audit_longitude: float | None = None
+    photo_url: str | None = None
+
+class SubmitAssetAuditRequest(BaseModel):
+    status: AuditResultStatus
+    condition_status: str | None = None
+    quantity_found: int = 1
+    remarks: str | None = None
+    audit_latitude: float | None = None
+    audit_longitude: float | None = None
+    photo_url: str | None = None
+
+
+class SubmitAssetAuditResponse(BaseModel):
+    message: str
+
+    audit_id: str
+    session_id: str
+
+    asset_id: str
+    asset_name: str
+
+    audited_assets: int
+    total_assets: int
+    remaining_assets: int
+
+    completion_percentage: float
+
+    is_complete: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditSummaryResponse(BaseModel):
+    audit_id: str
+    session_id: str
+    audit_name: str
+
+    status: AuditSessionStatus
+
+    total_assets: int
+    audited_assets: int
+    remaining_assets: int
+
+    completion_percentage: float
+
+    in_place: int
+    dislocated: int
+    not_found: int
+    lost: int
