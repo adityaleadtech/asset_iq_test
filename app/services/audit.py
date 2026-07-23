@@ -2120,7 +2120,7 @@ class AuditService:
             report_information=AuditReportInformation(
                 report_id=str(uuid.uuid4()),
                 generated_at=datetime.utcnow(),
-                generated_by=current_user.full_name,
+                generated_by=current_user["full_name"],
             ),
             audit_information=AuditInformation(
                 audit_id=str(audit.id),
