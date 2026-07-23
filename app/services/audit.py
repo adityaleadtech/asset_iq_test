@@ -25,8 +25,6 @@ from app.schemas.Audit import (
     AuditPlanUpdate,
     AuditSessionResponse,
     AuditSessionListResponse,
-    AuditResultRequest,
-    AuditResultResponse,
     AuditDashboardResponse,
     AuditSummaryResponse,
     MyAuditResponse,
@@ -50,7 +48,7 @@ class AuditService:
     def create_audit(
         payload: AuditPlanCreate,
         db: Session,
-        current_user
+        current_user: User
     ):
 
         try:
@@ -59,7 +57,7 @@ class AuditService:
             # Resolve Client
             # ---------------------------------
 
-            if current_user["role"] == "PLATFORM_ADMIN":
+            if current_user.role == "PLATFORM_ADMIN":
 
                 if not payload.client_id:
                     raise HTTPException(
@@ -69,9 +67,9 @@ class AuditService:
 
                 client_id = payload.client_id
 
-            elif current_user["role"] == "CLIENT_ADMIN":
+            elif current_user.role == "CLIENT_ADMIN":
 
-                client_id = current_user["client_id"]
+                client_id = current_user.client_id
 
             else:
                 raise HTTPException(
@@ -282,7 +280,7 @@ class AuditService:
 
                 status=AuditPlanStatus.ACTIVE,
 
-                created_by=current_user["id"],
+                created_by=current_user.id,
 
                 is_active=True,
             )
@@ -386,7 +384,7 @@ class AuditService:
     @staticmethod
     def get_audits(
         db: Session,
-        current_user,
+        current_user: User,
         page: int = 1,
         size: int = 10,
         search: str | None = None,
@@ -402,20 +400,20 @@ class AuditService:
         # Role Filter
         # ---------------------------------
 
-        if current_user["role"] == "PLATFORM_ADMIN":
+        if current_user.role == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user["role"] == "CLIENT_ADMIN":
+        elif current_user.role == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user["client_id"]
+                AuditPlan.client_id == current_user.client_id
             )
 
-        elif current_user["role"] == "AUDITOR":
+        elif current_user.role == "AUDITOR":
 
             query = query.filter(
-                AuditPlan.auditor_id == current_user["id"]
+                AuditPlan.auditor_id == current_user.id
             )
 
         else:
@@ -514,7 +512,7 @@ class AuditService:
     def get_audit_by_id(
         audit_id: str,
         db: Session,
-        current_user
+        current_user: User
     ):
 
         query = (
@@ -526,20 +524,20 @@ class AuditService:
             )
         )
 
-        if current_user["role"] == "PLATFORM_ADMIN":
+        if current_user.role == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user["role"] == "CLIENT_ADMIN":
+        elif current_user.role == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user["client_id"]
+                AuditPlan.client_id == current_user.client_id
             )
 
-        elif current_user["role"] == "AUDITOR":
+        elif current_user.role == "AUDITOR":
 
             query = query.filter(
-                AuditPlan.auditor_id == current_user["id"]
+                AuditPlan.auditor_id == current_user.id
             )
 
         else:
@@ -623,7 +621,7 @@ class AuditService:
         audit_id: str,
         payload: AuditPlanUpdate,
         db: Session,
-        current_user
+        current_user: User
     ):
 
         query = db.query(AuditPlan).filter(
@@ -631,14 +629,14 @@ class AuditService:
             AuditPlan.is_active == True
         )
 
-        if current_user["role"] == "PLATFORM_ADMIN":
+        if current_user.role == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user["role"] == "CLIENT_ADMIN":
+        elif current_user.role == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user["client_id"]
+                AuditPlan.client_id == current_user.client_id
             )
 
         else:
@@ -779,7 +777,7 @@ class AuditService:
     def delete_audit(
         audit_id: str,
         db: Session,
-        current_user
+        current_user: User
     ):
 
         query = db.query(AuditPlan).filter(
@@ -787,14 +785,14 @@ class AuditService:
             AuditPlan.is_active == True
         )
 
-        if current_user["role"] == "PLATFORM_ADMIN":
+        if current_user.role == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user["role"] == "CLIENT_ADMIN":
+        elif current_user.role == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user["client_id"]
+                AuditPlan.client_id == current_user.client_id
             )
 
         else:
@@ -838,484 +836,23 @@ class AuditService:
         }
 
     @staticmethod
-    def get_my_audits(
-        db: Session,
-        current_user,
-        page: int = 1,
-        size: int = 10,
-        status: AuditSessionStatus | None = None,
-    ):
-
-        query = (
-            db.query(AuditSession)
-            .join(AuditPlan)
-            .filter(
-                AuditSession.assigned_to == current_user["id"],
-                AuditPlan.is_active == True
-            )
-        )
-
-        if status:
-
-            query = query.filter(
-                AuditSession.status == status
-            )
-
-        total = query.count()
-
-        sessions = (
-            query.order_by(AuditSession.scheduled_date.desc())
-            .offset((page - 1) * size)
-            .limit(size)
-            .all()
-        )
-
-        items = []
-
-        for session in sessions:
-
-            items.append(
-
-                AuditSessionResponse(
-
-                    id=session.id,
-
-                    audit_plan_id=session.audit_plan.id,
-
-                    audit_name=session.audit_plan.name,
-
-                    scheduled_date=session.scheduled_date,
-
-                    started_at=session.started_at,
-
-                    completed_at=session.completed_at,
-
-                    assigned_to=session.assigned_to,
-
-                    conducted_by=session.conducted_by,
-
-                    total_assets=session.total_assets,
-
-                    audited_assets=session.audited_assets,
-
-                    status=session.status
-
-                )
-
-            )
-
-        return AuditSessionListResponse(
-
-            items=items,
-
-            total=total,
-
-            page=page,
-
-            size=size
-
-        )
-
-    @staticmethod
-    def start_audit_session(
-        session_id: str,
-        db: Session,
-        current_user
-    ):
-
-        session = (
-            db.query(AuditSession)
-            .filter(
-                AuditSession.id == session_id
-            )
-            .first()
-        )
-
-        if not session:
-
-            raise HTTPException(
-                status_code=404,
-                detail="Audit session not found."
-            )
-
-        # Check if the current user is the assigned auditor
-        if session.assigned_to != current_user["id"]:
-
-            raise HTTPException(
-                status_code=403,
-                detail="This audit is not assigned to you."
-            )
-
-        if session.status != AuditSessionStatus.PENDING:
-
-            raise HTTPException(
-                status_code=400,
-                detail="Audit session has already started."
-            )
-
-        audit_plan = session.audit_plan
-
-        # Use the consolidated helper method
-        assets_map = AuditService.get_audit_assets(db, audit_plan.id)
-        assets = list(assets_map.values())
-
-        session.total_assets = len(assets)
-        session.audited_assets = 0
-
-        session.status = AuditSessionStatus.IN_PROGRESS
-
-        session.started_at = datetime.utcnow()
-
-        session.conducted_by = current_user["id"]
-
-        for asset in assets:
-
-            result = AuditResult(
-
-                audit_session_id=session.id,
-
-                asset_id=asset.id,
-
-                expected_location_id=asset.location_id,
-
-                expected_latitude=asset.current_latitude,
-
-                expected_longitude=asset.current_longitude,
-
-                status=AuditResultStatus.PENDING
-
-            )
-
-            db.add(result)
-
-        db.commit()
-
-        db.refresh(session)
-
-        return AuditSessionResponse(
-
-            id=session.id,
-
-            audit_plan_id=session.audit_plan.id,
-
-            audit_name=session.audit_plan.name,
-
-            scheduled_date=session.scheduled_date,
-
-            started_at=session.started_at,
-
-            completed_at=session.completed_at,
-
-            assigned_to=session.assigned_to,
-
-            conducted_by=session.conducted_by,
-
-            total_assets=session.total_assets,
-
-            audited_assets=session.audited_assets,
-
-            status=session.status
-
-        )
-
-    @staticmethod
-    def start_audit_session_by_plan(
-        audit_id: str,
-        db: Session,
-        current_user: User
-    ):
-        """
-        Start an audit session using the audit plan ID.
-        
-        This finds the active/pending session for the given audit plan
-        and starts it.
-        """
-        
-        # Find the active/pending session for this audit plan
-        session = (
-            db.query(AuditSession)
-            .join(AuditPlan)
-            .filter(
-                AuditPlan.id == audit_id,
-                AuditSession.assigned_to == current_user.id,
-                AuditSession.status == AuditSessionStatus.PENDING
-            )
-            .first()
-        )
-        
-        if not session:
-            raise HTTPException(
-                status_code=404,
-                detail="No pending audit session found for this audit."
-            )
-        
-        # Use the existing start_audit_session method
-        return AuditService.start_audit_session(
-            session_id=session.id,
-            db=db,
-            current_user=current_user
-        )
-
-    @staticmethod
-    def submit_asset_audit_legacy(
-        session_id: str,
-        asset_id: str,
-        payload: AuditResultRequest,
-        db: Session,
-        current_user
-    ):
-
-        session = (
-            db.query(AuditSession)
-            .filter(
-                AuditSession.id == session_id
-            )
-            .first()
-        )
-
-        if not session:
-
-            raise HTTPException(
-                status_code=404,
-                detail="Audit session not found."
-            )
-
-        # Check if the current user is the assigned auditor
-        if session.assigned_to != current_user["id"]:
-
-            raise HTTPException(
-                status_code=403,
-                detail="This audit is not assigned to you."
-            )
-
-        if session.status != AuditSessionStatus.IN_PROGRESS:
-
-            raise HTTPException(
-                status_code=400,
-                detail="Audit session is not in progress."
-            )
-
-        result = (
-            db.query(AuditResult)
-            .filter(
-                AuditResult.audit_session_id == session_id,
-                AuditResult.asset_id == asset_id
-            )
-            .first()
-        )
-
-        if not result:
-
-            raise HTTPException(
-                status_code=404,
-                detail="Asset not found in this audit."
-            )
-
-        if result.status != AuditResultStatus.PENDING:
-
-            raise HTTPException(
-                status_code=400,
-                detail="Asset already audited."
-            )
-
-        result.audit_latitude = payload.audit_latitude
-        result.audit_longitude = payload.audit_longitude
-        result.actual_location_id = payload.actual_location_id
-
-        result.condition = payload.condition
-        result.remarks = payload.remarks
-        result.image_url = payload.image_url
-
-        result.location_status = payload.location_status
-        result.status = AuditResultStatus.COMPLETED
-
-        result.audited_at = datetime.utcnow()
-
-        session.audited_assets += 1
-
-        db.commit()
-
-        db.refresh(result)
-
-        return AuditResultResponse(
-
-            id=result.id,
-
-            asset_id=result.asset_id,
-
-            asset_name=result.asset.asset_name,
-
-            expected_location_id=result.expected_location_id,
-
-            actual_location_id=result.actual_location_id,
-
-            expected_latitude=result.expected_latitude,
-
-            expected_longitude=result.expected_longitude,
-
-            audit_latitude=result.audit_latitude,
-
-            audit_longitude=result.audit_longitude,
-
-            location_status=result.location_status,
-
-            condition=result.condition,
-
-            remarks=result.remarks,
-
-            image_url=result.image_url,
-
-            status=result.status,
-
-            audited_at=result.audited_at
-
-        )
-
-    @staticmethod
-    def complete_audit_session(
-        session_id: str,
-        db: Session,
-        current_user
-    ):
-
-        session = (
-            db.query(AuditSession)
-            .filter(
-                AuditSession.id == session_id
-            )
-            .first()
-        )
-
-        if not session:
-
-            raise HTTPException(
-                status_code=404,
-                detail="Audit session not found."
-            )
-
-        # Check if the current user is the assigned auditor
-        if session.assigned_to != current_user["id"]:
-
-            raise HTTPException(
-                status_code=403,
-                detail="This audit is not assigned to you."
-            )
-
-        if session.status != AuditSessionStatus.IN_PROGRESS:
-
-            raise HTTPException(
-                status_code=400,
-                detail="Audit session is not in progress."
-            )
-
-        pending_assets = (
-            db.query(AuditResult)
-            .filter(
-                AuditResult.audit_session_id == session.id,
-                AuditResult.status == AuditResultStatus.PENDING
-            )
-            .count()
-        )
-
-        if pending_assets > 0:
-
-            raise HTTPException(
-                status_code=400,
-                detail="All assets must be audited before completing the audit."
-            )
-
-        session.status = AuditSessionStatus.COMPLETED
-
-        session.completed_at = datetime.utcnow()
-
-        audit_plan = session.audit_plan
-
-        # Update next run date
-        if audit_plan.frequency_unit == AuditFrequencyUnit.DAY:
-
-            audit_plan.next_run_date += timedelta(
-                days=audit_plan.frequency_interval
-            )
-
-        elif audit_plan.frequency_unit == AuditFrequencyUnit.WEEK:
-
-            audit_plan.next_run_date += timedelta(
-                weeks=audit_plan.frequency_interval
-            )
-
-        else:
-
-            audit_plan.next_run_date += timedelta(
-                days=30 * audit_plan.frequency_interval
-            )
-
-        # Create next session
-        new_session = AuditSession(
-
-            audit_plan_id=audit_plan.id,
-
-            assigned_to=audit_plan.auditor_id,
-
-            scheduled_date=audit_plan.next_run_date,
-
-            status=AuditSessionStatus.PENDING,
-
-            total_assets=0,
-
-            audited_assets=0
-
-        )
-
-        db.add(new_session)
-
-        db.commit()
-
-        db.refresh(session)
-
-        return AuditSessionResponse(
-
-            id=session.id,
-
-            audit_plan_id=session.audit_plan.id,
-
-            audit_name=session.audit_plan.name,
-
-            scheduled_date=session.scheduled_date,
-
-            started_at=session.started_at,
-
-            completed_at=session.completed_at,
-
-            assigned_to=session.assigned_to,
-
-            conducted_by=session.conducted_by,
-
-            total_assets=session.total_assets,
-
-            audited_assets=session.audited_assets,
-
-            status=session.status
-
-        )
-
-    @staticmethod
     def audit_dashboard(
         db: Session,
-        current_user
+        current_user: User
     ):
 
         query = db.query(AuditPlan).filter(
             AuditPlan.is_active == True
         )
 
-        if current_user["role"] == "PLATFORM_ADMIN":
+        if current_user.role == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user["role"] == "CLIENT_ADMIN":
+        elif current_user.role == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user["client_id"]
+                AuditPlan.client_id == current_user.client_id
             )
 
         else:
@@ -1379,7 +916,7 @@ class AuditService:
             .join(AuditSession)
             .filter(
                 AuditSession.audit_plan_id.in_(audit_ids),
-                AuditResult.status == AuditResultStatus.COMPLETED
+                AuditResult.status != AuditResultStatus.PENDING
             )
             .count()
         )
@@ -1405,7 +942,7 @@ class AuditService:
     @staticmethod
     def audit_history(
         db: Session,
-        current_user,
+        current_user: User,
         page: int = 1,
         size: int = 10,
     ):
@@ -1420,20 +957,20 @@ class AuditService:
             )
         )
 
-        if current_user["role"] == "PLATFORM_ADMIN":
+        if current_user.role == "PLATFORM_ADMIN":
 
             pass
 
-        elif current_user["role"] == "CLIENT_ADMIN":
+        elif current_user.role == "CLIENT_ADMIN":
 
             query = query.filter(
-                AuditPlan.client_id == current_user["client_id"]
+                AuditPlan.client_id == current_user.client_id
             )
 
         else:
 
             query = query.filter(
-                AuditSession.assigned_to == current_user["id"]
+                AuditSession.assigned_to == current_user.id
             )
 
         total = query.count()
@@ -1492,103 +1029,6 @@ class AuditService:
             size=size
 
         )
-
-    @staticmethod
-    def get_session_assets(
-        session_id: str,
-        db: Session,
-        current_user
-    ):
-        session = (
-            db.query(AuditSession)
-            .filter(AuditSession.id == session_id)
-            .first()
-        )
-        if not session:
-            raise HTTPException(
-                status_code=404,
-                detail="Audit session not found."
-            )
-        if session.assigned_to != current_user["id"]:
-            raise HTTPException(
-                status_code=403,
-                detail="Permission denied."
-            )
-        results = (
-            db.query(AuditResult)
-            .join(Asset)
-            .filter(
-                AuditResult.audit_session_id == session_id
-            )
-            .all()
-        )
-        return [
-            AuditResultResponse(
-                asset_id=result.asset_id,
-                asset_name=result.asset.name,
-                serial_number=result.asset.serial_number,
-                
-                status=result.status,
-                condition_status=result.condition_status,
-                
-                quantity_expected=result.quantity_expected,
-                quantity_found=result.quantity_found,
-                
-                remarks=result.remarks,
-                photo_url=result.photo_url,
-                
-                expected_location_id=result.expected_location_id,
-                expected_latitude=result.expected_latitude,
-                expected_longitude=result.expected_longitude,
-                
-                audit_latitude=result.audit_latitude,
-                audit_longitude=result.audit_longitude,
-                
-                location_status=result.location_status,
-                
-                audited_by=result.audited_by,
-                audited_at=result.audited_at,
-            )
-            for result in results
-        ]
-
-    @staticmethod
-    def get_my_audits_simple(
-        db: Session,
-        current_user: User
-    ):
-        sessions = (
-            db.query(AuditSession)
-            .join(AuditPlan)
-            .filter(
-                AuditSession.assigned_to == current_user.id
-            )
-            .all()
-        )
-        response = []
-        for session in sessions:
-            percentage = 0
-            if session.total_assets:
-                percentage = round(
-                    (session.audited_assets / session.total_assets) * 100,
-                    2
-                )
-
-            response.append(
-                MyAuditResponse(
-                    audit_id=session.audit_plan.id,
-                    session_id=session.id,
-                    audit_name=session.audit_plan.name,
-                    status=session.status,
-                    start_date=session.audit_plan.start_date,
-                    end_date=session.audit_plan.end_date,
-                    scheduled_date=session.scheduled_date,
-                    total_assets=session.total_assets,
-                    audited_assets=session.audited_assets,
-                    completion_percentage=percentage
-                )
-            )
-        return response
 
     # -------------------- HELPER METHODS --------------------
     
@@ -1844,6 +1284,184 @@ class AuditService:
         )
 
     @staticmethod
+    def get_my_audits_simple(
+        db: Session,
+        current_user: User
+    ):
+        sessions = (
+            db.query(AuditSession)
+            .join(AuditPlan)
+            .filter(
+                AuditSession.assigned_to == current_user.id
+            )
+            .all()
+        )
+        response = []
+        for session in sessions:
+            percentage = 0
+            if session.total_assets:
+                percentage = round(
+                    (session.audited_assets / session.total_assets) * 100,
+                    2
+                )
+
+            response.append(
+                MyAuditResponse(
+                    audit_id=session.audit_plan.id,
+                    session_id=session.id,
+                    audit_name=session.audit_plan.name,
+                    status=session.status,
+                    start_date=session.audit_plan.start_date,
+                    end_date=session.audit_plan.end_date,
+                    scheduled_date=session.scheduled_date,
+                    total_assets=session.total_assets,
+                    audited_assets=session.audited_assets,
+                    completion_percentage=percentage
+                )
+            )
+        return response
+
+    @staticmethod
+    def start_audit_session(
+        session_id: str,
+        db: Session,
+        current_user: User
+    ):
+
+        session = (
+            db.query(AuditSession)
+            .filter(
+                AuditSession.id == session_id
+            )
+            .first()
+        )
+
+        if not session:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Audit session not found."
+            )
+
+        # Check if the current user is the assigned auditor
+        if session.assigned_to != current_user.id:
+
+            raise HTTPException(
+                status_code=403,
+                detail="This audit is not assigned to you."
+            )
+
+        if session.status != AuditSessionStatus.PENDING:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Audit session has already started."
+            )
+
+        audit_plan = session.audit_plan
+
+        # Use the consolidated helper method
+        assets_map = AuditService.get_audit_assets(db, audit_plan.id)
+        assets = list(assets_map.values())
+
+        session.total_assets = len(assets)
+        session.audited_assets = 0
+
+        session.status = AuditSessionStatus.IN_PROGRESS
+
+        session.started_at = datetime.utcnow()
+
+        session.conducted_by = current_user.id
+
+        for asset in assets:
+
+            result = AuditResult(
+
+                audit_session_id=session.id,
+
+                asset_id=asset.id,
+
+                expected_location_id=asset.location_id,
+
+                expected_latitude=asset.current_latitude,
+
+                expected_longitude=asset.current_longitude,
+
+                status=AuditResultStatus.PENDING
+
+            )
+
+            db.add(result)
+
+        db.commit()
+
+        db.refresh(session)
+
+        return AuditSessionResponse(
+
+            id=session.id,
+
+            audit_plan_id=session.audit_plan.id,
+
+            audit_name=session.audit_plan.name,
+
+            scheduled_date=session.scheduled_date,
+
+            started_at=session.started_at,
+
+            completed_at=session.completed_at,
+
+            assigned_to=session.assigned_to,
+
+            conducted_by=session.conducted_by,
+
+            total_assets=session.total_assets,
+
+            audited_assets=session.audited_assets,
+
+            status=session.status
+
+        )
+
+    @staticmethod
+    def start_audit_session_by_plan(
+        audit_id: str,
+        db: Session,
+        current_user: User
+    ):
+        """
+        Start an audit session using the audit plan ID.
+        
+        This finds the active/pending session for the given audit plan
+        and starts it.
+        """
+        
+        # Find the active/pending session for this audit plan
+        session = (
+            db.query(AuditSession)
+            .join(AuditPlan)
+            .filter(
+                AuditPlan.id == audit_id,
+                AuditSession.assigned_to == current_user.id,
+                AuditSession.status == AuditSessionStatus.PENDING
+            )
+            .first()
+        )
+        
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail="No pending audit session found for this audit."
+            )
+        
+        # Use the existing start_audit_session method
+        return AuditService.start_audit_session(
+            session_id=session.id,
+            db=db,
+            current_user=current_user
+        )
+
+    @staticmethod
     def scan_asset(
         db: Session,
         audit_id: str,
@@ -1959,20 +1577,14 @@ class AuditService:
         audit_result.audited_by = current_user.id
         audit_result.audited_at = datetime.utcnow()
         
-        # Step 8: Save the updated audit result
-        db.add(audit_result)
-        
-        # Step 9: Update session progress
-        session.audited_assets += 1
-        
-        # Step 10: Commit all changes
+        # Step 8: Commit changes (no need for db.add() since object is already in session)
         db.commit()
         
-        # Step 11: Refresh for latest data
+        # Step 9: Refresh for latest data
         db.refresh(audit_result)
         db.refresh(session)
         
-        # Step 12: Calculate remaining assets and completion percentage
+        # Step 10: Calculate remaining assets and completion percentage
         remaining_assets = session.total_assets - session.audited_assets
         
         completion_percentage = 0.0
@@ -1982,10 +1594,10 @@ class AuditService:
                 2
             )
         
-        # Step 13: Check if all assets are audited (but don't auto-complete)
+        # Step 11: Check if all assets are audited (but don't auto-complete)
         is_complete = session.audited_assets >= session.total_assets
         
-        # Step 14: Return response
+        # Step 12: Return response
         return SubmitAssetAuditResponse(
             message="Asset audited successfully.",
             audit_id=session.audit_plan.id,
