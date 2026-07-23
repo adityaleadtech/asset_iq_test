@@ -620,7 +620,7 @@ from app.config.dependencies import get_current_user
 def admin_or_client_admin(
     current_user=Depends(get_current_user),
 ):
-    if current_user.role not in [
+    if current_user["role"] not in [
         "ADMIN",
         "CLIENT_ADMIN"
     ]:
