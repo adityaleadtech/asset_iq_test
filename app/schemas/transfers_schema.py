@@ -75,7 +75,14 @@ class TransferAssetDetailResponse(BaseModel):
 
     class Config:
         from_attributes = True
+from pydantic import BaseModel
 
+class TransferListResponse(BaseModel):
+    items: list[TransferResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 class TransferDetailResponse(BaseModel):
     id: UUID
