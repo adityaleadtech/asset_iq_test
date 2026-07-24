@@ -17,6 +17,7 @@ from app.routers.authentication import router as authentication_router
 from app.routers.profile import router as profile_router
 from app.routers.tracking import router as tracking_router
 from app.routers.audit import router as audit_router
+from app.routers.transfers_router import router as transfer_router
 
 
 app = FastAPI()
@@ -35,6 +36,7 @@ app.add_middleware(
 api_router = APIRouter(prefix="/api")
 
 # Add all routers to the common api_router
+api_router.include_router(transfer_router)
 api_router.include_router(tracking_router)
 api_router.include_router(location_router)
 api_router.include_router(auth.router)
