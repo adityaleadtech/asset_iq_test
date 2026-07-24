@@ -5,7 +5,7 @@ from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from app.database.database import Base
+from app.config.database import Base
 
 
 class TransferAsset(Base):
