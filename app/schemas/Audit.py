@@ -396,8 +396,7 @@ class AuditSummary(BaseModel):
 
 class AssetVerificationDetail(BaseModel):
     asset_id: str
-
-    asset_code: str
+    asset_code: Optional[str] = None 
     asset_name: str
 
     serial_number: str | None = None
