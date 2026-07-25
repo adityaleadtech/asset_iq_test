@@ -527,11 +527,12 @@ def submit_asset_audit(
             detail=f"Invalid condition status: {condition_status}. Must be one of {valid_conditions}"
         )
     
+    # ✅ FIXED: Changed 'status=status' to 'audit_status=status'
     return AuditService.submit_asset_audit(
         db=db,
         audit_id=audit_id,
         asset_id=asset_id,
-        status=status,
+        audit_status=status,  # <-- KEY CHANGE HERE
         condition_status=condition_status,
         quantity_found=quantity_found,
         remarks=remarks,
@@ -611,11 +612,10 @@ def complete_audit(
         current_user=current_user
     )
 
-from fastapi import Depends, HTTPException, status
 
-from app.config.dependencies import get_current_user
-
-
+# ============================================================
+# 🔐 ADMIN ONLY ENDPOINTS
+# ============================================================
 
 def admin_or_client_admin(
     current_user=Depends(get_current_user),
@@ -630,6 +630,8 @@ def admin_or_client_admin(
         )
 
     return current_user
+
+
 @router.get(
     "/{audit_id}/report",
     response_model=AuditReportResponse,

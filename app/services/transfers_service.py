@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, String, text
 from fastapi import HTTPException, status
 from uuid import UUID
 from datetime import datetime
@@ -29,6 +29,19 @@ class TransferService:
         This is the only way to record asset movements. Transfers are immutable
         once created to maintain an accurate audit trail.
         """
+        
+        # ========== DEBUGGING START ==========
+        print("=" * 80)
+        print("🔍 DEBUG: CREATE TRANSFER")
+        print(f"Transfer Type: {transfer_data.transfer_type}")
+        print(f"Reason: {transfer_data.reason}")
+        print(f"Remarks: {transfer_data.remarks}")
+        print(f"Assets: {transfer_data.assets}")
+        print(f"\nCurrent User: {current_user}")
+        print(f"  - User ID: {current_user.get('id')}")
+        print(f"  - Client ID: {current_user.get('client_id')}")
+        print("=" * 80)
+        # ========== DEBUGGING END ==========
 
         try:
             transfer = Transfer(
@@ -45,6 +58,9 @@ class TransferService:
             processed_assets = set()
 
             for item in transfer_data.assets:
+                
+                print(f"\n📦 Processing Asset: {item.asset_id}")
+                print(f"  - To Department ID: {item.to_department_id}")
 
                 if str(item.asset_id) in processed_assets:
                     raise HTTPException(
@@ -54,29 +70,58 @@ class TransferService:
 
                 processed_assets.add(str(item.asset_id))
 
+                # ============================================================
+                # Find asset using text() for reliable UUID comparison
+                # ============================================================
                 asset = (
                     db.query(Asset)
                     .filter(
-                        Asset.id == item.asset_id,
-                        Asset.client_id == current_user["client_id"],
-                        Asset.deleted_at.is_(None)
+                        text("id = :asset_id AND client_id = :client_id")
+                    )
+                    .params(
+                        asset_id=str(item.asset_id),
+                        client_id=current_user["client_id"]
                     )
                     .first()
                 )
 
+                # Fallback to String cast if text() doesn't work
                 if not asset:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Asset {item.asset_id} not found."
+                    asset = (
+                        db.query(Asset)
+                        .filter(
+                            func.cast(Asset.id, String) == str(item.asset_id),
+                            Asset.client_id == current_user["client_id"],
+                        )
+                        .first()
                     )
+
+                if not asset:
+                    # Check without client filter
+                    asset_no_client = (
+                        db.query(Asset)
+                        .filter(func.cast(Asset.id, String) == str(item.asset_id))
+                        .first()
+                    )
+                    
+                    if asset_no_client:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Asset {item.asset_id} exists but belongs to a different client."
+                        )
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Asset {item.asset_id} not found in database."
+                        )
 
                 from_department = asset.department_id
                 from_location = asset.location_id
-                from_user = asset.assigned_user_id
+                from_user = asset.assigned_to_user_id
 
                 to_department = asset.department_id
                 to_location = asset.location_id
-                to_user = asset.assigned_user_id
+                to_user = asset.assigned_to_user_id
 
                 if transfer_data.transfer_type == TransferType.DEPARTMENT:
 
@@ -86,13 +131,12 @@ class TransferService:
                             detail="Destination department is required."
                         )
 
-                    # Verify destination exists first
+                    # Find department
                     department = (
                         db.query(Department)
                         .filter(
-                            Department.id == item.to_department_id,
+                            func.cast(Department.id, String) == str(item.to_department_id),
                             Department.client_id == current_user["client_id"],
-                            Department.deleted_at.is_(None)
                         )
                         .first()
                     )
@@ -103,8 +147,8 @@ class TransferService:
                             detail="Department not found."
                         )
 
-                    # Then check if it's a no-op transfer
-                    if asset.department_id == item.to_department_id:
+                    # Check if it's a no-op transfer
+                    if asset.department_id == department.id:
                         raise HTTPException(
                             status_code=400,
                             detail=f"Asset {asset.name} is already assigned to this department."
@@ -121,13 +165,12 @@ class TransferService:
                             detail="Destination location is required."
                         )
 
-                    # Verify destination exists first
+                    # Find location
                     location = (
                         db.query(Location)
                         .filter(
-                            Location.id == item.to_location_id,
+                            func.cast(Location.id, String) == str(item.to_location_id),
                             Location.client_id == current_user["client_id"],
-                            Location.deleted_at.is_(None)
                         )
                         .first()
                     )
@@ -138,8 +181,8 @@ class TransferService:
                             detail="Location not found."
                         )
 
-                    # Then check if it's a no-op transfer
-                    if asset.location_id == item.to_location_id:
+                    # Check if it's a no-op transfer
+                    if asset.location_id == location.id:
                         raise HTTPException(
                             status_code=400,
                             detail=f"Asset {asset.name} is already assigned to this location."
@@ -156,13 +199,12 @@ class TransferService:
                             detail="Destination user is required."
                         )
 
-                    # Verify destination exists first
+                    # Find user
                     user = (
                         db.query(User)
                         .filter(
-                            User.id == item.to_user_id,
+                            func.cast(User.id, String) == str(item.to_user_id),
                             User.client_id == current_user["client_id"],
-                            User.deleted_at.is_(None)
                         )
                         .first()
                     )
@@ -173,14 +215,14 @@ class TransferService:
                             detail="User not found."
                         )
 
-                    # Then check if it's a no-op transfer
-                    if asset.assigned_user_id == item.to_user_id:
+                    # Check if it's a no-op transfer
+                    if asset.assigned_to_user_id == user.id:
                         raise HTTPException(
                             status_code=400,
                             detail=f"Asset {asset.name} is already assigned to this user."
                         )
 
-                    asset.assigned_user_id = user.id
+                    asset.assigned_to_user_id = user.id
                     to_user = user.id
 
                 transfer_asset = TransferAsset(
@@ -202,13 +244,60 @@ class TransferService:
             db.commit()
             db.refresh(transfer)
 
-            return transfer
+            # ============================================================
+            # Get the user who performed the transfer
+            # ============================================================
+            transferred_by_user = (
+                db.query(User)
+                .filter(User.id == transfer.transferred_by)
+                .first()
+            )
 
-        except HTTPException:
+            # ============================================================
+            # Count the number of assets in this transfer
+            # ============================================================
+            asset_count = (
+                db.query(TransferAsset)
+                .filter(TransferAsset.transfer_id == transfer.id)
+                .count()
+            )
+
+            # ============================================================
+            # Return properly formatted response matching TransferResponse schema
+            # ============================================================
+            response = {
+                "id": str(transfer.id),
+                "transfer_type": transfer.transfer_type,
+                "reason": transfer.reason,
+                "remarks": transfer.remarks,
+                "transferred_by": transferred_by_user.full_name if transferred_by_user else None,
+                "transferred_by_id": str(transfer.transferred_by) if transfer.transferred_by else None,
+                "asset_count": asset_count,
+                "created_at": transfer.created_at,
+            }
+
+            print("\n" + "=" * 80)
+            print("✅ TRANSFER CREATED SUCCESSFULLY!")
+            print(f"Transfer ID: {transfer.id}")
+            print(f"Asset Count: {asset_count}")
+            print("=" * 80)
+
+            return response
+
+        except HTTPException as e:
+            print("\n" + "=" * 80)
+            print(f"❌ HTTP EXCEPTION: {e.detail}")
+            print(f"Status Code: {e.status_code}")
+            print("=" * 80)
             db.rollback()
             raise
 
         except Exception as e:
+            print("\n" + "=" * 80)
+            print(f"❌ UNEXPECTED EXCEPTION: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            print("=" * 80)
             db.rollback()
             raise HTTPException(
                 status_code=500,

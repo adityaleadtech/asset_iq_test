@@ -1,3 +1,5 @@
+# app/models/asset.py - Updated with correct transfer relationship
+
 from sqlalchemy import (
     Column,
     String,
@@ -131,63 +133,29 @@ class Asset(Base):
     qr_code_url = Column(String(500), nullable=True)
     created_image_url = Column(String(500), nullable=True)
     latest_image_url = Column(String(500), nullable=True)
+    barcode_url = Column(Text, nullable=True)
 
     # Additional Data
     remarks = Column(Text, nullable=True)
-
-    metadata_json = Column(
-        Text,
-        nullable=True
-    )
-
-    custom_fields = Column(
-        JSON,
-        nullable=True
-    )
+    metadata_json = Column(Text, nullable=True)
+    custom_fields = Column(JSON, nullable=True)
 
     # Status
-    is_active = Column(
-        Boolean,
-        default=True
-    )
+    is_active = Column(Boolean, default=True)
 
     # Timestamps
-    created_at = Column(
-        DateTime,
-        server_default=func.now()
-    )
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
 
-    updated_at = Column(
-        DateTime,
-        onupdate=func.now()
-    )
+    # ============================================================
+    # RELATIONSHIPS
+    # ============================================================
 
-    # Relationships
-    client = relationship(
-        "Client",
-        back_populates="assets"
-    )
-
-    location = relationship(
-        "Location",
-        back_populates="assets"
-    )
-
-    category = relationship(
-        "AssetCategory",
-        back_populates="assets"
-    )
-
-    asset_type = relationship(
-        "AssetType",
-        back_populates="assets"
-    )
-    barcode_url = Column(Text, nullable=True)
-
-    department = relationship(
-        "Department",
-        back_populates="assets"
-    )
+    client = relationship("Client", back_populates="assets")
+    location = relationship("Location", back_populates="assets")
+    category = relationship("AssetCategory", back_populates="assets")
+    asset_type = relationship("AssetType", back_populates="assets")
+    department = relationship("Department", back_populates="assets")
 
     assigned_to_user = relationship(
         "User",
@@ -213,8 +181,9 @@ class Asset(Base):
         backref="children"
     )
 
-    transfers = relationship(
-        "Transfer",
+    # ✅ FIXED: Use transfer_assets instead of transfers
+    transfer_assets = relationship(
+        "TransferAsset",
         back_populates="asset",
         cascade="all, delete-orphan"
     )
@@ -239,23 +208,11 @@ class AssetScanLog(Base):
 
     __tablename__ = "asset_scan_logs"
 
-    id = Column(
-        CHAR(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4())
-    )
+    id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    asset_id = Column(
-        CHAR(36),
-        ForeignKey("assets.id"),
-        nullable=False
-    )
+    asset_id = Column(CHAR(36), ForeignKey("assets.id"), nullable=False)
 
-    scanned_by = Column(
-        CHAR(36),
-        ForeignKey("users.id"),
-        nullable=False
-    )
+    scanned_by = Column(CHAR(36), ForeignKey("users.id"), nullable=False)
 
     # GPS Location
     latitude = Column(Float, nullable=True)
@@ -270,43 +227,16 @@ class AssetScanLog(Base):
     asset_condition = Column(String(50), nullable=True)
     tag_state = Column(String(50), nullable=True)
 
-    verification_type = Column(
-        String(50),
-        nullable=True
-    )
+    verification_type = Column(String(50), nullable=True)
 
-    ip_address = Column(
-        String(50),
-        nullable=True
-    )
+    ip_address = Column(String(50), nullable=True)
+    user_agent = Column(String(255), nullable=True)
 
-    user_agent = Column(
-        String(255),
-        nullable=True
-    )
+    scan_number = Column(Integer, nullable=True)
 
-    scan_number = Column(
-        Integer,
-        nullable=True
-    )
-
-    scanned_at = Column(
-        DateTime,
-        server_default=func.now()
-    )
-
-    created_at = Column(
-        DateTime,
-        server_default=func.now()
-    )
+    scanned_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
 
     # Relationships
-    asset = relationship(
-        "Asset",
-        back_populates="scan_logs"
-    )
-
-    scanner = relationship(
-        "User",
-        foreign_keys=[scanned_by]
-    )
+    asset = relationship("Asset", back_populates="scan_logs")
+    scanner = relationship("User", foreign_keys=[scanned_by])

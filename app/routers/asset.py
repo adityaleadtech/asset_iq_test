@@ -81,11 +81,6 @@ from app.services.assets import (
     start_maintenance,
     get_maintenance_task,
 )
-from app.schemas.transfers import (
-    AssetTransferRequest,
-    TransferHistoryResponse
-)
-from app.services.transfers import transfer_asset
 
 router = APIRouter(prefix="/assets", tags=["Assets"])
 
@@ -659,30 +654,7 @@ def get_asset_maintenance_router(
     )
 
 # ==================== ASSET OPERATIONS (MUST COME BEFORE /{asset_id}) ====================
-@router.post(
-    "/{asset_id}/transfer",
-    response_model=AssetResponse,
-    summary="Transfer Asset"
-)
-def transfer_existing_asset(
-    asset_id: str,
-    payload: AssetTransferRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(check_permission("ASSET_MANAGEMENT", "update"))
-):
-    return transfer_asset(db, asset_id, payload, current_user)
 
-@router.get(
-    "/{asset_id}/transfers",
-    response_model=list[TransferHistoryResponse],
-    summary="Fetch Asset Transfer History"
-)
-def fetch_asset_transfers(
-    asset_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(check_permission("ASSET_MANAGEMENT", "read"))
-):
-    return asset_service.get_asset_transfers(db, asset_id, current_user)
 
 @router.post(
     "/{asset_id}/mark-lost",

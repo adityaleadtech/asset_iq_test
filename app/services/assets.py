@@ -25,7 +25,7 @@ from app.models.subscription import Subscription
 from app.models.asset_categories import AssetCategory
 from app.models.asset_type import AssetType
 from app.models.departments import Department
-from app.models.transfers import Transfer
+
 from app.models.users import User
 from app.models.location import Location
 from app.schemas.assets import AssetBulkCreate, AssetVerificationRequest, CreateMaintenanceRequest, MarkLostRequest, RejectMaintenanceRequest
@@ -1837,55 +1837,6 @@ def search_assets(
 
 
 # ============================================
-# GET ASSET TRANSFERS
-# ============================================
-
-def get_asset_transfers(
-    db: Session,
-    asset_id: str,
-    current_user: dict
-):
-    """
-    Fetch complete transfer history of an asset.
-    """
-    asset_dict = get_asset_by_id(db, asset_id, current_user)
-
-    transfers = (
-        db.query(Transfer)
-        .options(
-            joinedload(Transfer.from_location),
-            joinedload(Transfer.to_location),
-            joinedload(Transfer.from_department),
-            joinedload(Transfer.to_department),
-            joinedload(Transfer.from_user),
-            joinedload(Transfer.to_user),
-            joinedload(Transfer.transferred_by_user)
-        )
-        .filter(Transfer.asset_id == asset_dict.get("id"))
-        .order_by(Transfer.transferred_at.desc())
-        .all()
-    )
-
-    response = []
-    for transfer in transfers:
-        response.append({
-            "id": transfer.id,
-            "transfer_type": transfer.transfer_type,
-            "transfer_reason": transfer.transfer_reason,
-            "from_location": transfer.from_location.name if transfer.from_location else None,
-            "to_location": transfer.to_location.name if transfer.to_location else None,
-            "from_department": transfer.from_department.name if transfer.from_department else None,
-            "to_department": transfer.to_department.name if transfer.to_department else None,
-            "from_user": transfer.from_user.full_name if transfer.from_user else None,
-            "to_user": transfer.to_user.full_name if transfer.to_user else None,
-            "notes": transfer.notes,
-            "status": transfer.status,
-            "transferred_by": transfer.transferred_by_user.full_name if transfer.transferred_by_user else None,
-            "transferred_at": transfer.transferred_at
-        })
-
-    return response
-
 
 # ============================================
 # GET ASSET TIMELINE
@@ -1935,21 +1886,7 @@ def get_asset_timeline(
             "created_at": scan.scanned_at
         })
 
-    # Transfers
-    transfers = (
-        db.query(Transfer)
-        .filter(Transfer.asset_id == asset_dict.get("id"))
-        .all()
-    )
-
-    for transfer in transfers:
-        timeline.append({
-            "event_type": "TRANSFERRED",
-            "title": "Asset Transferred",
-            "description": transfer.transfer_reason,
-            "performed_by": transfer.transferred_by_user.full_name if transfer.transferred_by_user else None,
-            "created_at": transfer.transferred_at
-        })
+    
 
     # Maintenance
     maintenance_tasks = (

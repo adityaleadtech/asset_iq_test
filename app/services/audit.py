@@ -1,7 +1,5 @@
-# app/services/audit.py
-
 from datetime import datetime, timedelta
-from fastapi import HTTPException, status, UploadFile
+from fastapi import HTTPException, status as http_status, UploadFile
 from sqlalchemy.orm import Session
 from typing import Dict
 import cloudinary.uploader
@@ -68,7 +66,7 @@ class AuditService:
 
                 if not payload.client_id:
                     raise HTTPException(
-                        status_code=400,
+                        status_code=http_status.HTTP_400_BAD_REQUEST,
                         detail="client_id is required."
                     )
 
@@ -80,7 +78,7 @@ class AuditService:
 
             else:
                 raise HTTPException(
-                    status_code=403,
+                    status_code=http_status.HTTP_403_FORBIDDEN,
                     detail="Permission denied."
                 )
 
@@ -99,7 +97,7 @@ class AuditService:
 
             if not client:
                 raise HTTPException(
-                    status_code=404,
+                    status_code=http_status.HTTP_404_NOT_FOUND,
                     detail="Client not found."
                 )
 
@@ -119,7 +117,7 @@ class AuditService:
 
             if not auditor:
                 raise HTTPException(
-                    status_code=404,
+                    status_code=http_status.HTTP_404_NOT_FOUND,
                     detail="Auditor not found."
                 )
 
@@ -138,7 +136,7 @@ class AuditService:
 
                 if key in seen:
                     raise HTTPException(
-                        status_code=400,
+                        status_code=http_status.HTTP_400_BAD_REQUEST,
                         detail="Duplicate audit target."
                     )
 
@@ -164,7 +162,7 @@ class AuditService:
 
                     if not exists:
                         raise HTTPException(
-                            status_code=404,
+                            status_code=http_status.HTTP_404_NOT_FOUND,
                             detail=f"Location {target.target_id} not found."
                         )
 
@@ -182,7 +180,7 @@ class AuditService:
 
                     if not exists:
                         raise HTTPException(
-                            status_code=404,
+                            status_code=http_status.HTTP_404_NOT_FOUND,
                             detail=f"Department {target.target_id} not found."
                         )
 
@@ -199,7 +197,7 @@ class AuditService:
 
                     if not exists:
                         raise HTTPException(
-                            status_code=404,
+                            status_code=http_status.HTTP_404_NOT_FOUND,
                             detail=f"Category {target.target_id} not found."
                         )
 
@@ -208,7 +206,7 @@ class AuditService:
                         and exists.client_id != client_id
                     ):
                         raise HTTPException(
-                            status_code=400,
+                            status_code=http_status.HTTP_400_BAD_REQUEST,
                             detail="Category belongs to another client."
                         )
 
@@ -226,13 +224,13 @@ class AuditService:
 
                     if not exists:
                         raise HTTPException(
-                            status_code=404,
+                            status_code=http_status.HTTP_404_NOT_FOUND,
                             detail=f"Asset {target.target_id} not found."
                         )
 
                 else:
                     raise HTTPException(
-                        status_code=400,
+                        status_code=http_status.HTTP_400_BAD_REQUEST,
                         detail="Invalid target type."
                     )
 
@@ -384,7 +382,7 @@ class AuditService:
             db.rollback()
 
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(e)
             )
 
@@ -426,7 +424,7 @@ class AuditService:
         else:
 
             raise HTTPException(
-                status_code=403,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="Permission denied."
             )
 
@@ -550,7 +548,7 @@ class AuditService:
         else:
 
             raise HTTPException(
-                status_code=403,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="Permission denied."
             )
 
@@ -559,7 +557,7 @@ class AuditService:
         if not audit:
 
             raise HTTPException(
-                status_code=404,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Audit not found."
             )
 
@@ -649,7 +647,7 @@ class AuditService:
         else:
 
             raise HTTPException(
-                status_code=403,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="Permission denied."
             )
 
@@ -658,7 +656,7 @@ class AuditService:
         if not audit:
 
             raise HTTPException(
-                status_code=404,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Audit not found."
             )
 
@@ -677,7 +675,7 @@ class AuditService:
             if not auditor:
 
                 raise HTTPException(
-                    status_code=404,
+                    status_code=http_status.HTTP_404_NOT_FOUND,
                     detail="Auditor not found."
                 )
 
@@ -805,7 +803,7 @@ class AuditService:
         else:
 
             raise HTTPException(
-                status_code=403,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="Permission denied."
             )
 
@@ -814,7 +812,7 @@ class AuditService:
         if not audit:
 
             raise HTTPException(
-                status_code=404,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Audit not found."
             )
 
@@ -830,7 +828,7 @@ class AuditService:
         if active_session:
 
             raise HTTPException(
-                status_code=400,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete an audit with an active session."
             )
 
@@ -865,7 +863,7 @@ class AuditService:
         else:
 
             raise HTTPException(
-                status_code=403,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="Permission denied."
             )
 
@@ -1071,7 +1069,7 @@ class AuditService:
         
         if not session:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Audit not found or you don't have access to it."
             )
         
@@ -1182,7 +1180,7 @@ class AuditService:
         
         if not asset:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Asset not found."
             )
         
@@ -1191,7 +1189,7 @@ class AuditService:
         
         if asset.id not in audit_assets:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="This asset is not part of this audit."
             )
         
@@ -1353,7 +1351,7 @@ class AuditService:
         if not session:
 
             raise HTTPException(
-                status_code=404,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Audit session not found."
             )
 
@@ -1361,14 +1359,14 @@ class AuditService:
         if session.assigned_to != current_user["id"]:
 
             raise HTTPException(
-                status_code=403,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="This audit is not assigned to you."
             )
 
         if session.status != AuditSessionStatus.PENDING:
 
             raise HTTPException(
-                status_code=400,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Audit session has already started."
             )
 
@@ -1464,7 +1462,7 @@ class AuditService:
         
         if not session:
             raise HTTPException(
-                status_code=404,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="No pending audit session found for this audit."
             )
         
@@ -1490,9 +1488,7 @@ class AuditService:
         - Exists and is active
         - Has not already been audited
 
-        Returns a simple success response with asset ID.
-        Detailed asset information is available via:
-        GET /audits/{audit_id}/assets/{asset_id}
+        Returns asset details for verification before submitting the audit result.
         """
         
         # Verify audit session exists and is active
@@ -1501,7 +1497,7 @@ class AuditService:
         # Check if session is active
         if session.status != AuditSessionStatus.IN_PROGRESS:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Audit session is not active."
             )
         
@@ -1520,21 +1516,25 @@ class AuditService:
         
         if not audit_result:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Asset not found in this audit."
             )
         
         if audit_result.status != AuditResultStatus.PENDING:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
+                status_code=http_status.HTTP_409_CONFLICT,
                 detail="Asset has already been audited."
             )
         
-        # ✅ Return only the fields expected by ScanAssetResponse
+        # Return asset details
         return ScanAssetResponse(
-            success=True,
-            message="Asset validated successfully.",
-            asset_id=asset.id
+            asset_id=asset.id,
+            asset_name=asset.name,
+            serial_number=asset.serial_number,
+            qr_code_url=asset.qr_code_url,
+            location=asset.location.name if asset.location else None,
+            expected_condition=asset.asset_condition,
+            already_audited=False  # Since we passed the PENDING check
         )
 
     @staticmethod
@@ -1542,7 +1542,7 @@ class AuditService:
         db: Session,
         audit_id: str,
         asset_id: str,
-        status: str,
+        audit_status: str,
         condition_status: str,
         quantity_found: int,
         remarks: str | None,
@@ -1564,7 +1564,7 @@ class AuditService:
         # Step 2: Verify session is active
         if session.status != AuditSessionStatus.IN_PROGRESS:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Audit session is not active."
             )
         
@@ -1583,28 +1583,28 @@ class AuditService:
         
         if not audit_result:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Asset not found in this audit."
             )
         
         # Step 5: Check if already audited (not PENDING)
         if audit_result.status != AuditResultStatus.PENDING:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
+                status_code=http_status.HTTP_409_CONFLICT,
                 detail="Asset has already been audited."
             )
         
-        # Step 6: Convert status string to enum for mapping
+        # Step 6: Convert status string to enum for mapping (FIXED)
         try:
-            status_enum = AuditResultStatus(status)
+            status_enum = AuditResultStatus(audit_status)
         except ValueError:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid audit status: {status}"
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid audit status: {audit_status}"
             )
         
-        # Step 7: Update the existing AuditResult with findings
-        audit_result.status = status
+        # Step 7: Update the existing AuditResult with findings (FIXED)
+        audit_result.status = audit_status
         audit_result.condition_status = condition_status
         audit_result.quantity_found = quantity_found
         audit_result.remarks = remarks
@@ -1637,7 +1637,7 @@ class AuditService:
                 
                 if not image_url:
                     raise HTTPException(
-                        status_code=500,
+                        status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail="Cloudinary did not return an image URL"
                     )
                 
@@ -1651,7 +1651,7 @@ class AuditService:
             except Exception as error:
                 print(f"AUDIT PHOTO UPLOAD FAILED: {str(error)}")
                 raise HTTPException(
-                    status_code=500,
+                    status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Failed to upload audit photo: {str(error)}"
                 )
         
@@ -1717,14 +1717,14 @@ class AuditService:
         # Step 2: Verify session is in progress
         if session.status != AuditSessionStatus.IN_PROGRESS:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=f"Audit session is not active. Current status: {session.status}"
             )
         
         # Step 3: Check if all assets have been audited
         if session.audited_assets < session.total_assets:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot complete audit. Only {session.audited_assets} out of {session.total_assets} assets have been audited."
             )
         
@@ -1878,7 +1878,7 @@ class AuditService:
         return AuditAssetDetailsResponse(
             asset_id=asset.id,
             asset_name=asset.name,
-            asset_code=str(asset.id),  # ✅ FIXED: Use asset ID as asset_code
+            asset_code=getattr(asset, "asset_code", None),
             serial_number=asset.serial_number,
             category=asset.category.name if asset.category else None,
             department=asset.department.name if asset.department else None,
@@ -1917,7 +1917,7 @@ class AuditService:
 
         if not audit:
             raise HTTPException(
-                status_code=404,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Audit not found."
             )
 
@@ -1927,7 +1927,7 @@ class AuditService:
             and audit.client_id != current_user["client_id"]
         ):
             raise HTTPException(
-                status_code=403,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="You are not authorized to view this audit."
             )
 
@@ -1941,7 +1941,7 @@ class AuditService:
 
         if not session:
             raise HTTPException(
-                status_code=404,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail="Audit session not found."
             )
 
@@ -2060,11 +2060,11 @@ class AuditService:
             asset_details.append(
                 AssetVerificationDetail(
                     asset_id=str(asset.id),
-                    asset_code=str(asset.id),  # ✅ FIXED: Use asset ID as asset_code
+                    asset_code=asset.asset_code,
                     asset_name=asset.name,
                     serial_number=asset.serial_number,
-                    manufacturer=getattr(asset, "manufacturer", None),
-                    model=getattr(asset, "model", None),
+                    manufacturer=asset.manufacturer,
+                    model=asset.model,
                     category=(
                         asset.category.name
                         if asset.category
@@ -2092,7 +2092,7 @@ class AuditService:
                     ),
                     audit_status=result.status,
                     condition_status=result.condition_status,
-                    quantity_expected=getattr(result, "quantity_expected", 0),
+                    quantity_expected=result.quantity_expected,
                     quantity_found=result.quantity_found,
                     location_status=result.location_status,
                     audited_by=(
@@ -2102,8 +2102,8 @@ class AuditService:
                     ),
                     audited_at=result.audited_at,
                     remarks=result.remarks,
-                    created_image_url=getattr(asset, "created_image_url", None),
-                    latest_image_url=getattr(asset, "latest_image_url", None),
+                    created_image_url=asset.created_image_url,
+                    latest_image_url=asset.latest_image_url,
                     audit_image_url=result.photo_url,
                     expected_latitude=result.expected_latitude,
                     expected_longitude=result.expected_longitude,
@@ -2113,21 +2113,6 @@ class AuditService:
             )
 
         # ============================================================
-        # Get user name - FIXED: Handle missing 'full_name' key
-        # ============================================================
-        
-        # Try multiple possible keys for the user's name
-        generated_by = (
-            current_user.get("full_name") or
-            current_user.get("fullname") or
-            current_user.get("name") or
-            current_user.get("username") or
-            current_user.get("email") or
-            current_user.get("user_id") or
-            str(current_user.get("id", "Unknown User"))
-        )
-
-        # ============================================================
         # Return Response
         # ============================================================
         
@@ -2135,11 +2120,11 @@ class AuditService:
             report_information=AuditReportInformation(
                 report_id=str(uuid.uuid4()),
                 generated_at=datetime.utcnow(),
-                generated_by=generated_by,  # ✅ FIXED
+                generated_by=current_user.full_name,
             ),
             audit_information=AuditInformation(
                 audit_id=str(audit.id),
-                audit_code=getattr(audit, "audit_code", str(audit.id)),  # ✅ FIXED
+                audit_code=audit.audit_code,
                 audit_name=audit.name,
                 audit_status=session.status,
                 audit_type=audit_type,
