@@ -19,6 +19,7 @@ from app.routers.tracking import router as tracking_router
 from app.routers.audit import router as audit_router
 from app.routers.transfers_router import router as transfer_router
 from app.routers.office_timing import router as timing_router
+from app.routers.attendance import router as attendance_router
 
 
 app = FastAPI()
@@ -38,6 +39,7 @@ api_router = APIRouter(prefix="/api")
 
 # Add all routers to the common api_router
 api_router.include_router(transfer_router)
+api_router.include_router(attendance_router)
 api_router.include_router(timing_router)
 api_router.include_router(tracking_router)
 api_router.include_router(location_router)
