@@ -1,9 +1,16 @@
-# app/routers/office_timing.py
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Query,
+    status,
+)
+
 from sqlalchemy.orm import Session
 
 from app.config.dependencies import get_db
+from app.utils.auth import get_current_user
 
 from app.schemas.office_timing import (
     OfficeTimingCreate,
@@ -14,8 +21,10 @@ from app.schemas.office_timing import (
 
 from app.services.office_timing import OfficeTimingService
 
-from app.utils.security import get_current_user
 
+# ============================================================
+# Router
+# ============================================================
 
 router = APIRouter(
     prefix="/office-timings",
@@ -23,33 +32,32 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# Admin APIs
+# ============================================================
+
 @router.post(
     "",
     response_model=OfficeTimingResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new office timing configuration"
+    summary="Create Office Timing",
+    description="Create a new office timing configuration for a location.",
 )
 def create_office_timing(
     payload: OfficeTimingCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     """
-    Create a new office timing configuration.
+    Create a new office timing.
     
-    - **Platform Admin**: Can create for any client (must provide client_id)
-    - **Client Admin**: Can create only for their own client
+    **Admin Only** - Requires PLATFORM_ADMIN or CLIENT_ADMIN role.
     
-    Required fields:
-    - location_id: ID of the location
-    - name: Name of the timing configuration
-    - check_in_time: Expected check-in time
-    - check_out_time: Expected check-out time
-    
-    Optional fields:
-    - client_id: Required for Platform Admin
-    - late_after_minutes: Minutes after check-in to mark as late (default: 15)
-    - half_day_after_minutes: Minutes after check-in to mark as half-day (default: 240)
+    - One office timing per location
+    - Check-in time must be before check-out time
+    - Configurable grace period and half-day threshold
+    - Client Admin can only create for their client
+    - Platform Admin must specify client_id
     """
     return OfficeTimingService.create_office_timing(
         payload=payload,
@@ -61,47 +69,52 @@ def create_office_timing(
 @router.get(
     "",
     response_model=OfficeTimingListResponse,
-    summary="Get paginated list of office timings"
+    summary="Get Office Timings",
+    description="Get all office timings with pagination and filtering.",
 )
 def get_office_timings(
     page: int = Query(1, ge=1, description="Page number"),
     size: int = Query(10, ge=1, le=100, description="Items per page"),
+    location_id: Optional[str] = Query(None, description="Filter by location ID"),
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     """
-    Get a paginated list of office timing configurations.
+    Get all office timings with pagination.
     
-    - **Platform Admin**: Can view all office timings across all clients
-    - **Client Admin**: Can view only their client's office timings
+    **Admin Only** - Requires PLATFORM_ADMIN or CLIENT_ADMIN role.
     
-    Results are paginated and ordered by creation date (newest first).
+    - Client Admin sees only their client's office timings
+    - Platform Admin sees all office timings
+    - Optional filter by location_id
     """
     return OfficeTimingService.get_office_timings(
         db=db,
         current_user=current_user,
         page=page,
         size=size,
+        location_id=location_id,
     )
 
 
 @router.get(
     "/{office_timing_id}",
     response_model=OfficeTimingResponse,
-    summary="Get a specific office timing by ID"
+    summary="Get Office Timing",
+    description="Get office timing by ID.",
 )
 def get_office_timing(
     office_timing_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     """
-    Get a specific office timing configuration by its ID.
+    Get office timing by ID.
     
-    - **Platform Admin**: Can view any office timing
-    - **Client Admin**: Can view only their client's office timings
+    **Admin Only** - Requires PLATFORM_ADMIN or CLIENT_ADMIN role.
     
-    Returns 404 if office timing not found or inactive.
+    - Client Admin can only view their client's office timings
+    - Platform Admin can view any office timing
     """
     return OfficeTimingService.get_office_timing(
         office_timing_id=office_timing_id,
@@ -113,26 +126,25 @@ def get_office_timing(
 @router.patch(
     "/{office_timing_id}",
     response_model=OfficeTimingResponse,
-    summary="Update an office timing configuration"
+    summary="Update Office Timing",
+    description="Update office timing details.",
 )
 def update_office_timing(
     office_timing_id: str,
     payload: OfficeTimingUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     """
-    Update an existing office timing configuration.
+    Update office timing.
     
-    All fields are optional. Only provided fields will be updated.
+    **Admin Only** - Requires PLATFORM_ADMIN or CLIENT_ADMIN role.
     
-    - **Platform Admin**: Can update any office timing
-    - **Client Admin**: Can update only their client's office timings
-    
-    Validations:
-    - If location_id is changed, new location must exist and belong to same client
-    - No duplicate active office timing for the same location
-    - Check-out time must be greater than check-in time
+    - Partial updates supported (only send fields to update)
+    - Can activate/deactivate timing
+    - Can change location (validates no conflict)
+    - Validates time constraints
+    - Client Admin can only update their client's office timings
     """
     return OfficeTimingService.update_office_timing(
         office_timing_id=office_timing_id,
@@ -145,26 +157,105 @@ def update_office_timing(
 @router.delete(
     "/{office_timing_id}",
     status_code=status.HTTP_200_OK,
-    summary="Delete an office timing configuration"
+    summary="Delete Office Timing",
+    description="Soft delete office timing.",
 )
 def delete_office_timing(
     office_timing_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user = Depends(get_current_user),
 ):
     """
-    Soft delete an office timing configuration.
+    Soft delete office timing.
     
-    This performs a soft delete by setting is_active to False.
-    The record remains in the database but won't be returned in queries.
+    **Admin Only** - Requires PLATFORM_ADMIN or CLIENT_ADMIN role.
     
-    - **Platform Admin**: Can delete any office timing
-    - **Client Admin**: Can delete only their client's office timings
-    
-    Returns a success message upon deletion.
+    - Sets is_active = False
+    - Does not physically delete the record
+    - Prevents deletion if attendance records exist
+    - Client Admin can only delete their client's office timings
     """
     return OfficeTimingService.delete_office_timing(
         office_timing_id=office_timing_id,
         db=db,
         current_user=current_user,
+    )
+
+
+# ============================================================
+# Additional Admin APIs (Optional)
+# ============================================================
+
+@router.get(
+    "/by-location/{location_id}",
+    response_model=OfficeTimingResponse,
+    summary="Get Office Timing by Location",
+    description="Get active office timing for a specific location.",
+)
+def get_office_timing_by_location(
+    location_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    """
+    Get active office timing for a specific location.
+    
+    **Admin Only** - Requires PLATFORM_ADMIN or CLIENT_ADMIN role.
+    
+    - Returns the active office timing for the location
+    - Useful for checking if a location has timing configured
+    """
+    # Query for active office timing for this location
+    from app.models.office_timing import OfficeTiming
+    from app.models.location import Location
+    
+    # Verify location exists and user has access
+    location = (
+        db.query(Location)
+        .filter(Location.id == location_id)
+        .first()
+    )
+    
+    if not location:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Location not found."
+        )
+    
+    # Permission check
+    role = current_user.get("role")
+    if role == "CLIENT_ADMIN" and location.client_id != current_user.get("client_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this location."
+        )
+    
+    office_timing = (
+        db.query(OfficeTiming)
+        .filter(
+            OfficeTiming.location_id == location_id,
+            OfficeTiming.is_active == True,
+        )
+        .first()
+    )
+    
+    if not office_timing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active office timing found for this location."
+        )
+    
+    return OfficeTimingResponse(
+        id=office_timing.id,
+        client_id=office_timing.client_id,
+        location_id=office_timing.location_id,
+        location_name=location.name,
+        name=office_timing.name,
+        check_in_time=office_timing.check_in_time,
+        check_out_time=office_timing.check_out_time,
+        late_after_minutes=office_timing.late_after_minutes,
+        half_day_after_minutes=office_timing.half_day_after_minutes,
+        is_active=office_timing.is_active,
+        created_at=office_timing.created_at,
+        updated_at=office_timing.updated_at,
     )

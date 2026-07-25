@@ -40,7 +40,15 @@ class Client(Base):
     back_populates="client",
     cascade="all, delete-orphan"
 )
+    attendance_records = relationship(
+    "Attendance",
+    back_populates="client"
+)
     
     __table_args__ = (
         UniqueConstraint('name', 'contact_email', name='unique_client_name_email'),
     )
+    attendance_records = relationship(
+    "Attendance",
+    back_populates="client"
+)

@@ -27,9 +27,14 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
     last_login = Column(DateTime, nullable=True)
+
     
     # Relationships
     client = relationship("Client", back_populates="users")
+    attendance_records = relationship(
+    "Attendance",
+    back_populates="user"
+)
     
     department = relationship(
         "Department",

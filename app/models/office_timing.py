@@ -101,3 +101,7 @@ class OfficeTiming(Base):
         "Attendance",
         back_populates="office_timing"
     )
+    attendance_records = relationship(
+    "Attendance",
+    back_populates="office_timing"
+)

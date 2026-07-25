@@ -1,12 +1,10 @@
-# app/services/office_timing_service.py
-
 import uuid
+from typing import Optional
 
 from sqlalchemy.orm import Session
-
 from fastapi import HTTPException, status
 
-from app.models.client import Client
+from app.models.clients import Client
 from app.models.location import Location
 from app.models.office_timing import OfficeTiming
 
@@ -24,13 +22,13 @@ class OfficeTimingService:
     def create_office_timing(
         payload: OfficeTimingCreate,
         db: Session,
-        current_user,
-    ):
+        current_user: dict,
+    ) -> OfficeTimingResponse:
         """
         Create a new office timing configuration.
         """
         # Permission Check
-        role = current_user["role"]
+        role = current_user.get("role")
         
         if role == "PLATFORM_ADMIN":
             if not payload.client_id:
@@ -41,7 +39,7 @@ class OfficeTimingService:
             client_id = payload.client_id
             
         elif role == "CLIENT_ADMIN":
-            client_id = current_user["client_id"]
+            client_id = current_user.get("client_id")
             
         else:
             raise HTTPException(
@@ -135,19 +133,21 @@ class OfficeTimingService:
             half_day_after_minutes=office_timing.half_day_after_minutes,
             is_active=office_timing.is_active,
             created_at=office_timing.created_at,
+            updated_at=office_timing.updated_at,
         )
     
     @staticmethod
     def get_office_timings(
         db: Session,
-        current_user,
+        current_user: dict,
         page: int = 1,
         size: int = 10,
-    ):
+        location_id: Optional[str] = None,
+    ) -> OfficeTimingListResponse:
         """
         Get paginated list of office timings with permission filtering.
         """
-        role = current_user["role"]
+        role = current_user.get("role")
         
         # Build base query with join to Location
         query = (
@@ -158,13 +158,17 @@ class OfficeTimingService:
         # Apply role-based filtering
         if role == "CLIENT_ADMIN":
             query = query.filter(
-                OfficeTiming.client_id == current_user["client_id"]
+                OfficeTiming.client_id == current_user.get("client_id")
             )
         elif role != "PLATFORM_ADMIN":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to view office timings."
             )
+        
+        # Apply location filter
+        if location_id:
+            query = query.filter(OfficeTiming.location_id == location_id)
         
         # Get total count
         total = query.count()
@@ -192,6 +196,7 @@ class OfficeTimingService:
                     half_day_after_minutes=item.half_day_after_minutes,
                     is_active=item.is_active,
                     created_at=item.created_at,
+                    updated_at=item.updated_at,
                 )
                 for item in records
             ],
@@ -204,8 +209,8 @@ class OfficeTimingService:
     def get_office_timing(
         office_timing_id: str,
         db: Session,
-        current_user,
-    ):
+        current_user: dict,
+    ) -> OfficeTimingResponse:
         """
         Get a single office timing by ID with permission check.
         """
@@ -225,10 +230,10 @@ class OfficeTimingService:
             )
         
         # Permission check
-        role = current_user["role"]
+        role = current_user.get("role")
         
         if role == "CLIENT_ADMIN":
-            if office_timing.client_id != current_user["client_id"]:
+            if office_timing.client_id != current_user.get("client_id"):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Not authorized to view this office timing."
@@ -251,6 +256,7 @@ class OfficeTimingService:
             half_day_after_minutes=office_timing.half_day_after_minutes,
             is_active=office_timing.is_active,
             created_at=office_timing.created_at,
+            updated_at=office_timing.updated_at,
         )
     
     @staticmethod
@@ -258,8 +264,8 @@ class OfficeTimingService:
         office_timing_id: str,
         payload: OfficeTimingUpdate,
         db: Session,
-        current_user,
-    ):
+        current_user: dict,
+    ) -> OfficeTimingResponse:
         """
         Update an existing office timing configuration.
         """
@@ -280,10 +286,10 @@ class OfficeTimingService:
             )
         
         # Permission check
-        role = current_user["role"]
+        role = current_user.get("role")
         
         if role == "CLIENT_ADMIN":
-            if office_timing.client_id != current_user["client_id"]:
+            if office_timing.client_id != current_user.get("client_id"):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Not authorized to update this office timing."
@@ -362,14 +368,15 @@ class OfficeTimingService:
             half_day_after_minutes=office_timing.half_day_after_minutes,
             is_active=office_timing.is_active,
             created_at=office_timing.created_at,
+            updated_at=office_timing.updated_at,
         )
     
     @staticmethod
     def delete_office_timing(
         office_timing_id: str,
         db: Session,
-        current_user,
-    ):
+        current_user: dict,
+    ) -> dict:
         """
         Soft delete an office timing configuration.
         """
@@ -390,10 +397,10 @@ class OfficeTimingService:
             )
         
         # Permission check
-        role = current_user["role"]
+        role = current_user.get("role")
         
         if role == "CLIENT_ADMIN":
-            if office_timing.client_id != current_user["client_id"]:
+            if office_timing.client_id != current_user.get("client_id"):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Not authorized to delete this office timing."
@@ -404,8 +411,24 @@ class OfficeTimingService:
                 detail="Not authorized to delete this office timing."
             )
         
+        # Check if there are attendance records using this timing
+        attendance_count = (
+            db.query(func.count(Attendance.id))
+            .filter(Attendance.office_timing_id == office_timing_id)
+            .scalar()
+        )
+        
+        if attendance_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete office timing. It has {attendance_count} attendance records."
+            )
+        
         # Soft delete
         office_timing.is_active = False
         db.commit()
         
-        return {"message": "Office timing deleted successfully."}
+        return {
+            "message": "Office timing deleted successfully.",
+            "id": office_timing_id
+        }
