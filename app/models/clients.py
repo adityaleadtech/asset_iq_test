@@ -25,7 +25,7 @@ class Client(Base):
     address_line_2 = Column(String(255), nullable=True)
     address_line_3 = Column(String(255), nullable=True)
     
-    # Relationships
+    # Relationships - All using string references
     assets = relationship("Asset", back_populates="client")
     users = relationship("User", back_populates="client")
     departments = relationship("Department", back_populates="client")
