@@ -24,31 +24,17 @@ class Client(Base):
     address_line_2 = Column(String(255), nullable=True)
     address_line_3 = Column(String(255), nullable=True)
     
-    # Relationships
+    # Relationships - All using string references
     assets = relationship("Asset", back_populates="client")
     users = relationship("User", back_populates="client")
     departments = relationship("Department", back_populates="client")
     subscriptions = relationship("Subscription", back_populates="client")
     asset_categories = relationship("AssetCategory", back_populates="client")
     asset_types = relationship("AssetType", back_populates="client")
-    office_timings = relationship(
-    "OfficeTiming",
-    back_populates="client"
-)
-    locations = relationship(
-    "Location",
-    back_populates="client",
-    cascade="all, delete-orphan"
-)
-    attendance_records = relationship(
-    "Attendance",
-    back_populates="client"
-)
+    office_timings = relationship("OfficeTiming", back_populates="client")
+    locations = relationship("Location", back_populates="client", cascade="all, delete-orphan")
+    attendance_records = relationship("Attendance", back_populates="client")  # ← Only ONE definition
     
     __table_args__ = (
         UniqueConstraint('name', 'contact_email', name='unique_client_name_email'),
     )
-    attendance_records = relationship(
-    "Attendance",
-    back_populates="client"
-)
