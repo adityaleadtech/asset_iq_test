@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.config.database import get_db
+from app.config.dependencies import get_db
 
 from app.schemas.office_timing import (
     OfficeTimingCreate,
