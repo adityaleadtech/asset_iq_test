@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status as http_status, UploadFile
 from sqlalchemy.orm import Session
-from typing import Dict
+from typing import Dict, List
 import cloudinary.uploader
 import uuid
 
@@ -235,31 +235,6 @@ class AuditService:
                     )
 
             # ---------------------------------
-            # Next Run Date
-            # ---------------------------------
-
-            if payload.frequency_unit == AuditFrequencyUnit.DAY:
-
-                next_run_date = (
-                    payload.start_date +
-                    timedelta(days=payload.frequency_interval)
-                )
-
-            elif payload.frequency_unit == AuditFrequencyUnit.WEEK:
-
-                next_run_date = (
-                    payload.start_date +
-                    timedelta(weeks=payload.frequency_interval)
-                )
-
-            else:
-
-                next_run_date = (
-                    payload.start_date +
-                    timedelta(days=30 * payload.frequency_interval)
-                )
-
-            # ---------------------------------
             # Create Audit Plan
             # ---------------------------------
 
@@ -281,7 +256,7 @@ class AuditService:
 
                 end_date=payload.end_date,
 
-                next_run_date=next_run_date,
+                next_run_date=payload.start_date,
 
                 status=AuditPlanStatus.ACTIVE,
 
@@ -313,37 +288,55 @@ class AuditService:
                 db.add(audit_target)
 
             # ---------------------------------
-            # Create Initial Audit Session
+            # Generate All Scheduled Sessions
             # ---------------------------------
 
-            audit_session = AuditSession(
-
-                audit_plan_id=audit_plan.id,
-
-                assigned_to=payload.auditor_id,
-
-                scheduled_date=payload.start_date,
-
-                status=AuditSessionStatus.PENDING,
-
-                total_assets=0,
-
-                audited_assets=0,
-
-                started_at=None,
-
-                completed_at=None,
-
-                conducted_by=None
-
+            scheduled_dates = AuditService._generate_schedule_dates(
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                frequency_unit=payload.frequency_unit,
+                frequency_interval=payload.frequency_interval
             )
 
-            db.add(audit_session)
+            # Create an AuditSession for each generated date
+            sessions_created = 0
+            for scheduled_date in scheduled_dates:
+                audit_session = AuditSession(
+
+                    audit_plan_id=audit_plan.id,
+
+                    assigned_to=payload.auditor_id,
+
+                    scheduled_date=scheduled_date,
+
+                    status=AuditSessionStatus.PENDING,
+
+                    total_assets=0,
+
+                    audited_assets=0,
+
+                    started_at=None,
+
+                    completed_at=None,
+
+                    conducted_by=None
+
+                )
+
+                db.add(audit_session)
+                sessions_created += 1
 
             db.commit()
 
             db.refresh(audit_plan)
-            db.refresh(audit_session)
+
+            # Get the first session for the response
+            first_session = (
+                db.query(AuditSession)
+                .filter(AuditSession.audit_plan_id == audit_plan.id)
+                .order_by(AuditSession.scheduled_date.asc())
+                .first()
+            )
 
             return AuditPlanResponse(
 
@@ -369,7 +362,9 @@ class AuditService:
 
                 status=audit_plan.status,
 
-                created_at=audit_plan.created_at
+                created_at=audit_plan.created_at,
+
+                sessions_count=sessions_created
 
             )
 
@@ -385,6 +380,41 @@ class AuditService:
                 status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=str(e)
             )
+
+    @staticmethod
+    def _generate_schedule_dates(
+        start_date: datetime,
+        end_date: datetime,
+        frequency_unit: str,
+        frequency_interval: int
+    ) -> List[datetime]:
+        """
+        Generate all dates between start_date and end_date based on frequency.
+        
+        Args:
+            start_date: The start date of the audit
+            end_date: The end date of the audit
+            frequency_unit: DAY, WEEK, or MONTH
+            frequency_interval: The interval between sessions
+            
+        Returns:
+            List of datetime objects representing each scheduled session date
+        """
+        dates = []
+        current_date = start_date
+        
+        while current_date <= end_date:
+            dates.append(current_date)
+            
+            if frequency_unit == AuditFrequencyUnit.DAY:
+                current_date += timedelta(days=frequency_interval)
+            elif frequency_unit == AuditFrequencyUnit.WEEK:
+                current_date += timedelta(weeks=frequency_interval)
+            else:  # MONTH
+                # Simple month addition (30 days approximation)
+                current_date += timedelta(days=30 * frequency_interval)
+        
+        return dates
 
     @staticmethod
     def get_audits(
@@ -468,6 +498,24 @@ class AuditService:
         items = []
 
         for audit in audits:
+            
+            # Build sessions list for each audit
+            sessions = []
+            
+            for session in audit.audit_sessions:
+                sessions.append(
+                    AuditSessionResponse(
+                        id=session.id,
+                        scheduled_date=session.scheduled_date,
+                        started_at=session.started_at,
+                        completed_at=session.completed_at,
+                        status=session.status,
+                        assigned_to=session.assigned_to,
+                        conducted_by=session.conducted_by,
+                        total_assets=session.total_assets,
+                        audited_assets=session.audited_assets,
+                    )
+                )
 
             items.append(
 
@@ -495,7 +543,9 @@ class AuditService:
 
                     status=audit.status,
 
-                    created_at=audit.created_at
+                    created_at=audit.created_at,
+
+                    sessions=sessions  # Now populating sessions
 
                 )
 
@@ -1299,13 +1349,16 @@ class AuditService:
         db: Session,
         current_user: User
     ):
-        print("called")
+        """
+        Get all audits assigned to the current user, ordered by scheduled date.
+        """
         sessions = (
             db.query(AuditSession)
             .join(AuditPlan)
             .filter(
                 AuditSession.assigned_to == current_user["id"]
             )
+            .order_by(AuditSession.scheduled_date.asc())
             .all()
         )
         response = []
@@ -1594,7 +1647,7 @@ class AuditService:
                 detail="Asset has already been audited."
             )
         
-        # Step 6: Convert status string to enum for mapping (FIXED)
+        # Step 6: Convert status string to enum for mapping
         try:
             status_enum = AuditResultStatus(audit_status)
         except ValueError:
@@ -1603,7 +1656,7 @@ class AuditService:
                 detail=f"Invalid audit status: {audit_status}"
             )
         
-        # Step 7: Update the existing AuditResult with findings (FIXED)
+        # Step 7: Update the existing AuditResult with findings
         audit_result.status = audit_status
         audit_result.condition_status = condition_status
         audit_result.quantity_found = quantity_found
@@ -1728,35 +1781,12 @@ class AuditService:
                 detail=f"Cannot complete audit. Only {session.audited_assets} out of {session.total_assets} assets have been audited."
             )
         
-        # Step 4: Complete the audit
+        # Step 4: Complete the audit session
         session.status = AuditSessionStatus.COMPLETED
         session.completed_at = datetime.utcnow()
         
-        # Update next run date for recurring audits
-        audit_plan = session.audit_plan
-        if audit_plan.frequency_unit == AuditFrequencyUnit.DAY:
-            audit_plan.next_run_date += timedelta(
-                days=audit_plan.frequency_interval
-            )
-        elif audit_plan.frequency_unit == AuditFrequencyUnit.WEEK:
-            audit_plan.next_run_date += timedelta(
-                weeks=audit_plan.frequency_interval
-            )
-        else:
-            audit_plan.next_run_date += timedelta(
-                days=30 * audit_plan.frequency_interval
-            )
-        
-        # Create next session for recurring audits
-        new_session = AuditSession(
-            audit_plan_id=audit_plan.id,
-            assigned_to=audit_plan.auditor_id,
-            scheduled_date=audit_plan.next_run_date,
-            status=AuditSessionStatus.PENDING,
-            total_assets=0,
-            audited_assets=0
-        )
-        db.add(new_session)
+        # Note: Next session is NOT created here anymore
+        # All sessions are pre-scheduled during audit creation
         
         db.commit()
         db.refresh(session)
@@ -2057,10 +2087,15 @@ class AuditService:
         for result in results:
             asset = result.asset
 
+            # Get asset_code or use empty string as fallback
+            asset_code = getattr(asset, "asset_code", None)
+            if asset_code is None:
+                asset_code = ""  # Use empty string instead of None
+
             asset_details.append(
                 AssetVerificationDetail(
                     asset_id=str(asset.id),
-                    asset_code=asset.asset_code,
+                    asset_code=asset_code,  # ← Now always a string (never None)
                     asset_name=asset.name,
                     serial_number=asset.serial_number,
                     manufacturer=asset.manufacturer,
@@ -2120,7 +2155,7 @@ class AuditService:
             report_information=AuditReportInformation(
                 report_id=str(uuid.uuid4()),
                 generated_at=datetime.utcnow(),
-                generated_by=current_user.full_name,
+                generated_by=current_user["full_name"],
             ),
             audit_information=AuditInformation(
                 audit_id=str(audit.id),

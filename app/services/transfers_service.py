@@ -70,22 +70,17 @@ class TransferService:
 
                 processed_assets.add(str(item.asset_id))
 
-                # ============================================================
-                # Find asset using text() for reliable UUID comparison
-                # ============================================================
+                # Find asset using standard SQLAlchemy query
                 asset = (
                     db.query(Asset)
                     .filter(
-                        text("id = :asset_id AND client_id = :client_id")
-                    )
-                    .params(
-                        asset_id=str(item.asset_id),
-                        client_id=current_user["client_id"]
+                        Asset.id == item.asset_id,
+                        Asset.client_id == current_user["client_id"],
                     )
                     .first()
                 )
 
-                # Fallback to String cast if text() doesn't work
+                # Fallback to String cast if direct comparison doesn't work
                 if not asset:
                     asset = (
                         db.query(Asset)
@@ -313,8 +308,18 @@ class TransferService:
         """
         Get a specific transfer by ID with all asset details.
         """
+        print(f"Transfer ID type: {type(transfer_id)}")
+        print(f"Transfer ID value: {transfer_id}")
+        print(f"Transfer ID as string: {str(transfer_id)}")
+        print("+++++++++++++++++++++_+_+_+_++++++++++++++++++++++++++++")
         
-        # Get the transfer
+        # Convert UUID to string for comparison with database
+        transfer_id_str = str(transfer_id)
+        
+        # Try multiple approaches to find the transfer
+        transfer = None
+        
+        # Approach 1: Direct UUID comparison
         transfer = (
             db.query(Transfer)
             .filter(
@@ -323,12 +328,52 @@ class TransferService:
             )
             .first()
         )
+        
+        # Approach 2: Cast to string comparison (if Approach 1 fails)
+        if not transfer:
+            transfer = (
+                db.query(Transfer)
+                .filter(
+                    func.cast(Transfer.id, String) == transfer_id_str,
+                    Transfer.client_id == current_user["client_id"]
+                )
+                .first()
+            )
+        
+        # Approach 3: Using text() for raw SQL comparison (if Approaches 1-2 fail)
+        if not transfer:
+            transfer = (
+                db.query(Transfer)
+                .filter(
+                    text("id = :id AND client_id = :client_id")
+                )
+                .params(
+                    id=transfer_id_str,
+                    client_id=str(current_user["client_id"])
+                )
+                .first()
+            )
 
         if not transfer:
-            raise HTTPException(
-                status_code=404,
-                detail="Transfer not found."
+            # Check if transfer exists but belongs to different client
+            transfer_no_client = (
+                db.query(Transfer)
+                .filter(
+                    func.cast(Transfer.id, String) == transfer_id_str
+                )
+                .first()
             )
+            
+            if transfer_no_client:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Transfer exists but belongs to a different client."
+                )
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Transfer not found."
+                )
 
         # Get the transfer assets
         transfer_assets = (
