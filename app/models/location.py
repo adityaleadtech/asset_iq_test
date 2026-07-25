@@ -151,7 +151,10 @@ class Location(Base):
         "Client",
         back_populates="locations"
     )
-
+    office_timings = relationship(
+    "OfficeTiming",
+    back_populates="location"
+)
     parent = relationship(
         "Location",
         remote_side=[id],
