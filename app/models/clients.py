@@ -3,6 +3,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from app.config.database import Base
+from app.models.attendance import Attendance  # ← ADD THIS IMPORT
 
 
 class Client(Base):
@@ -31,24 +32,10 @@ class Client(Base):
     subscriptions = relationship("Subscription", back_populates="client")
     asset_categories = relationship("AssetCategory", back_populates="client")
     asset_types = relationship("AssetType", back_populates="client")
-    office_timings = relationship(
-    "OfficeTiming",
-    back_populates="client"
-)
-    locations = relationship(
-    "Location",
-    back_populates="client",
-    cascade="all, delete-orphan"
-)
-    attendance_records = relationship(
-    "Attendance",
-    back_populates="client"
-)
+    office_timings = relationship("OfficeTiming", back_populates="client")
+    locations = relationship("Location", back_populates="client", cascade="all, delete-orphan")
+    attendance_records = relationship("Attendance", back_populates="client")  # ← Only ONE definition
     
     __table_args__ = (
         UniqueConstraint('name', 'contact_email', name='unique_client_name_email'),
     )
-    attendance_records = relationship(
-    "Attendance",
-    back_populates="client"
-)
