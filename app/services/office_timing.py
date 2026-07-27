@@ -352,17 +352,12 @@ class OfficeTimingService:
         # Permission check
         role = current_user.get("role")
         
-        if role == "CLIENT_ADMIN":
+        if role != "CLIENT_ADMIN" or role != "PLATFORM_ADMIN" :
             if office_timing.client_id != current_user.get("client_id"):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Not authorized to delete this office timing."
                 )
-        elif role != "PLATFORM_ADMIN":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to delete this office timing."
-            )
         
         # Check if there are users assigned to this timing
         user_count = (
