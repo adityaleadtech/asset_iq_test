@@ -3,6 +3,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from app.config.database import Base
+from app.models.attendance import Attendance  # ← ADD THIS IMPORT
 
 
 class Client(Base):

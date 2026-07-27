@@ -155,21 +155,10 @@ class Attendance(Base):
         nullable=False
     )
 
-    # Relationships
-    client = relationship(
-        "Client",
-        back_populates="attendance_records"
-    )
-
-    user = relationship(
-        "User",
-        back_populates="attendance_records"
-    )
-
-    office_timing = relationship(
-        "OfficeTiming",
-        back_populates="attendance_records"
-    )
+    # Relationships - REMOVE back_populates to avoid circular imports
+    client = relationship("Client")
+    user = relationship("User")
+    office_timing = relationship("OfficeTiming")
 
     # Unique constraint to prevent duplicate check-ins per day
     __table_args__ = (
