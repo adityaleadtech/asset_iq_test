@@ -82,7 +82,7 @@ def update_office_timing(
 def delete_office_timing(
     office_timing_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(admin_required),
+    current_user=Depends(get_current_user),
 ):
     """
     Soft delete an office timing configuration.
