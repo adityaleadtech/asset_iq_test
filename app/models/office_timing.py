@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     Integer,
     Time,
+    Float,  # NEW - for latitude/longitude
     DateTime,
     ForeignKey,
     func,
@@ -32,12 +33,13 @@ class OfficeTiming(Base):
         index=True
     )
 
-    location_id = Column(
-        String(36),
-        ForeignKey("locations.id"),
-        nullable=False,
-        index=True
-    )
+    # ❌ REMOVE THIS LINE - location_id is no longer needed
+    # location_id = Column(
+    #     String(36),
+    #     ForeignKey("locations.id"),
+    #     nullable=False,
+    #     index=True
+    # )
 
     name = Column(
         String(100),
@@ -66,6 +68,23 @@ class OfficeTiming(Base):
         default=240
     )
 
+    # ✅ NEW - Geofencing fields (replaces location_id)
+    latitude = Column(
+        Float,
+        nullable=False
+    )
+
+    longitude = Column(
+        Float,
+        nullable=False
+    )
+
+    radius_in_meters = Column(
+        Integer,
+        nullable=False,
+        default=100
+    )
+
     is_active = Column(
         Boolean,
         nullable=False,
@@ -92,16 +111,22 @@ class OfficeTiming(Base):
         back_populates="office_timings"
     )
 
-    location = relationship(
-        "Location",
-        back_populates="office_timings"
+    # ❌ REMOVE THIS RELATIONSHIP - no longer needed
+    # location = relationship(
+    #     "Location",
+    #     back_populates="office_timings"
+    # )
+
+    # ✅ UPDATE THIS RELATIONSHIP - add users relationship
+    users = relationship(
+        "User",
+        back_populates="office_timing"
     )
 
     attendance_records = relationship(
         "Attendance",
         back_populates="office_timing"
     )
-    attendance_records = relationship(
-    "Attendance",
-    back_populates="office_timing"
-)
+
+    def __repr__(self):
+        return f"<OfficeTiming(id={self.id}, name='{self.name}', client_id={self.client_id})>"

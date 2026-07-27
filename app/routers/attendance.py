@@ -11,7 +11,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.config.dependencies import get_db
-from app.utils.security import get_current_user
+from app.config.dependencies import get_current_user
 
 from app.schemas.attendance import (
     AttendanceCheckIn,

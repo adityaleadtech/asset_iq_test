@@ -13,6 +13,14 @@ class User(Base):
     subscription_id = Column(String(36), nullable=True)
     department_id = Column(String(36), ForeignKey("departments.id"), nullable=True)
     
+    # ✅ NEW - Office Timing relationship
+    office_timing_id = Column(
+        String(36), 
+        ForeignKey("office_timings.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
+        index=True
+    )
+    
     email = Column(String(255), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
@@ -31,10 +39,17 @@ class User(Base):
     
     # Relationships
     client = relationship("Client", back_populates="users")
+    
+    # ✅ NEW - Office Timing relationship
+    office_timing = relationship(
+        "OfficeTiming",
+        back_populates="users"
+    )
+    
     attendance_records = relationship(
-    "Attendance",
-    back_populates="user"
-)
+        "Attendance",
+        back_populates="user"
+    )
     
     department = relationship(
         "Department",
@@ -60,15 +75,16 @@ class User(Base):
         foreign_keys="Asset.created_by",
         back_populates="created_by_user"
     )
+    
     raised_maintenance_tasks = relationship(
-    "MaintenanceTask",
-    foreign_keys="[MaintenanceTask.raised_by]"
-)
+        "MaintenanceTask",
+        foreign_keys="[MaintenanceTask.raised_by]"
+    )
 
     approved_maintenance_tasks = relationship(
-    "MaintenanceTask",
-    foreign_keys="[MaintenanceTask.approved_by]"
-)
+        "MaintenanceTask",
+        foreign_keys="[MaintenanceTask.approved_by]"
+    )
     
     scanned_assets = relationship(
         "Asset",
@@ -76,7 +92,7 @@ class User(Base):
         back_populates="scanned_by_user"
     )
     
-    # Scan log relationships - REMOVED DUPLICATE
+    # Scan log relationships
     scan_logs = relationship(
         "AssetScanLog",
         foreign_keys="AssetScanLog.scanned_by",
@@ -84,11 +100,14 @@ class User(Base):
     )
 
     password_reset_token = Column(
-    String(255),
-    nullable=True
-)
+        String(255),
+        nullable=True
+    )
 
     password_reset_expires_at = Column(
-    DateTime,
-    nullable=True
-)
+        DateTime,
+        nullable=True
+    )
+    
+    def __repr__(self):
+        return f"<User(id={self.id}, email='{self.email}', full_name='{self.full_name}')>"

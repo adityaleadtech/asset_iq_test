@@ -1,3 +1,5 @@
+# app/services/user_service.py
+
 from datetime import date
 import uuid
 
@@ -11,16 +13,15 @@ from app.models.roles import Role
 from app.models.service_catalogue import ServiceCatalogue
 from app.models.subscription import Subscription
 from app.models.users import User
+from app.models.office_timing import OfficeTiming  # ✅ NEW
 from app.utils.jwthandler import create_token
 from app.utils.security import hash_password, verify_password
 from app.models.subscription_service import SubscriptionService
 
 
-# Helper function to validate user license limit
-def validate_user_license_limit(
-    db,
-    client_id: str
-):
+# ── Helper Functions ─────────────────────────────────────────────────────────
+
+def validate_user_license_limit(db, client_id: str):
     subscription = (
         db.query(Subscription)
         .filter(
@@ -49,7 +50,6 @@ def validate_user_license_limit(
     return subscription
 
 
-# Helper function to validate department belongs to client
 def validate_department_ownership(db, department_id: str, client_id: str):
     if not department_id:
         return None
@@ -76,6 +76,31 @@ def validate_department_ownership(db, department_id: str, client_id: str):
         )
     
     return department
+
+
+# ✅ NEW: Validate office timing belongs to client
+def validate_office_timing_ownership(db, office_timing_id: str, client_id: str):
+    """Validate office timing exists and belongs to the client."""
+    if not office_timing_id:
+        return None
+    
+    office_timing = (
+        db.query(OfficeTiming)
+        .filter(
+            OfficeTiming.id == office_timing_id,
+            OfficeTiming.client_id == client_id,
+            OfficeTiming.is_active == True
+        )
+        .first()
+    )
+    
+    if not office_timing:
+        raise HTTPException(
+            status_code=404,
+            detail="Office timing not found or does not belong to this client"
+        )
+    
+    return office_timing
 
 
 # ── Client Admin ──────────────────────────────────────────────────────────────
@@ -106,6 +131,10 @@ def create_client_admin(db, admin_data):
     if existing_email:
         raise HTTPException(status_code=400, detail="Email already exists")
 
+    # ✅ NEW: Validate office timing if provided
+    if admin_data.office_timing_id:
+        validate_office_timing_ownership(db, admin_data.office_timing_id, admin_data.client_id)
+
     # Client Admin is free - no license consumed
     user = User(
         id=str(uuid.uuid4()),
@@ -116,6 +145,7 @@ def create_client_admin(db, admin_data):
         phone=admin_data.phone,
         role="CLIENT_ADMIN",
         is_active=True,
+        office_timing_id=admin_data.office_timing_id,  # ✅ NEW
     )
 
     db.add(user)
@@ -125,11 +155,7 @@ def create_client_admin(db, admin_data):
     return user
 
 
-def login_client_admin(
-    db,
-    email: str,
-    password: str
-):
+def login_client_admin(db, email: str, password: str):
     admin = (
         db.query(User)
         .filter(
@@ -227,6 +253,10 @@ def create_manager(db, manager_data, current_user):
         if manager_data.department_id:
             validate_department_ownership(db, manager_data.department_id, client_id)
 
+        # ✅ NEW: Validate office timing if provided
+        if manager_data.office_timing_id:
+            validate_office_timing_ownership(db, manager_data.office_timing_id, client_id)
+
         # Use helper function to validate license limit
         subscription = validate_user_license_limit(db, client_id)
 
@@ -250,6 +280,7 @@ def create_manager(db, manager_data, current_user):
             role="MANAGER",
             employee_id=manager_data.employee_id,
             is_active=True,
+            office_timing_id=manager_data.office_timing_id,  # ✅ NEW
         )
 
         db.add(manager)
@@ -349,7 +380,17 @@ def update_manager(db, manager_id: str, manager_data, current_user):
         if manager_data.department_id and manager_data.department_id != manager.department_id:
             validate_department_ownership(db, manager_data.department_id, manager.client_id)
 
-        for key, value in manager_data.model_dump(exclude_unset=True).items():
+        # ✅ NEW: Validate office timing if being updated
+        if manager_data.office_timing_id is not None:
+            if manager_data.office_timing_id:
+                validate_office_timing_ownership(db, manager_data.office_timing_id, manager.client_id)
+            manager.office_timing_id = manager_data.office_timing_id
+
+        # Update other fields
+        update_dict = manager_data.model_dump(exclude_unset=True)
+        update_dict.pop('office_timing_id', None)  # Already handled
+        
+        for key, value in update_dict.items():
             setattr(manager, key, value)
 
         db.commit()
@@ -479,7 +520,7 @@ def restore_manager(db, manager_id: str, current_user):
 
 # ── Users ─────────────────────────────────────────────────────────────────────
 
-def create_user(db, user_data, current_user,client_id:str|None=None):
+def create_user(db, user_data, current_user, client_id: str | None = None):
     try:
         existing_user = (
             db.query(User)
@@ -509,6 +550,10 @@ def create_user(db, user_data, current_user,client_id:str|None=None):
         # Validate department belongs to client
         if user_data.department_id:
             validate_department_ownership(db, user_data.department_id, client_id)
+
+        # ✅ NEW: Validate office timing if provided
+        if user_data.office_timing_id:
+            validate_office_timing_ownership(db, user_data.office_timing_id, client_id)
         
         # Use helper function to validate license limit
         subscription = validate_user_license_limit(db, client_id)
@@ -586,6 +631,7 @@ def create_user(db, user_data, current_user,client_id:str|None=None):
             role="USER",
             custom_role_id=role.id,
             is_active=True,
+            office_timing_id=user_data.office_timing_id,  # ✅ NEW
         )
 
         db.add(user)
@@ -609,8 +655,8 @@ def create_user(db, user_data, current_user,client_id:str|None=None):
         )
 
 
-def get_users(db, current_user,client_id: str | None = None):
-    if current_user["role"]=="ADMIN" and client_id:
+def get_users(db, current_user, client_id: str | None = None):
+    if current_user["role"] == "ADMIN" and client_id:
         return db.query(User).filter(User.is_active == True, User.client_id == client_id).all()
     if current_user["role"] == "ADMIN":
         return db.query(User).filter(User.is_active == True).all()
@@ -671,9 +717,18 @@ def update_user(db, user_id: str, user_data, current_user):
         if user_data.department_id and user_data.department_id != user.department_id:
             validate_department_ownership(db, user_data.department_id, user.client_id)
 
-        for key, value in user_data.model_dump(exclude_unset=True, exclude={"role"}).items():
+        # ✅ NEW: Validate office timing if being updated
+        if user_data.office_timing_id is not None:
+            if user_data.office_timing_id:
+                validate_office_timing_ownership(db, user_data.office_timing_id, user.client_id)
+            user.office_timing_id = user_data.office_timing_id
+
+        # Update other fields (exclude role and office_timing_id)
+        update_dict = user_data.model_dump(exclude_unset=True, exclude={"role", "office_timing_id"})
+        for key, value in update_dict.items():
             setattr(user, key, value)
 
+        # Handle role update
         if user_data.role:
             # Get subscription and allowed services
             subscription = (
@@ -873,11 +928,7 @@ def get_deactivated_users(db, current_user):
     )
 
 
-def login_user(
-    db,
-    email: str,
-    password: str
-):
+def login_user(db, email: str, password: str):
     user = (
         db.query(User)
         .filter(
@@ -891,10 +942,7 @@ def login_user(
     if not user:
         return None
 
-    if not verify_password(
-        password,
-        user.password_hash
-    ):
+    if not verify_password(password, user.password_hash):
         return None
     
     subscription = (
@@ -932,11 +980,8 @@ def login_user(
     return token
 
 
-def get_user_profile(
-    db,
-    user_id: str
-):
-    return (
+def get_user_profile(db, user_id: str):
+    user = (
         db.query(User)
         .filter(
             User.id == user_id,
@@ -944,23 +989,44 @@ def get_user_profile(
         )
         .first()
     )
+    
+    if not user:
+        return None
+    
+    # ✅ NEW: Get office timing details for profile
+    office_timing = None
+    if user.office_timing_id:
+        office_timing = (
+            db.query(OfficeTiming)
+            .filter(OfficeTiming.id == user.office_timing_id)
+            .first()
+        )
+    
+    # Build response with office timing info
+    return {
+        "id": user.id,
+        "client_id": user.client_id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "phone": user.phone,
+        "role": user.role,
+        "employee_id": user.employee_id,
+        "profile_photo_url": user.profile_photo_url,
+        "office_timing_id": user.office_timing_id,
+        "office_timing_name": office_timing.name if office_timing else None,
+        "office_timing_check_in_time": office_timing.check_in_time.strftime('%H:%M') if office_timing else None,
+        "office_timing_check_out_time": office_timing.check_out_time.strftime('%H:%M') if office_timing else None,
+        "office_timing_latitude": office_timing.latitude if office_timing else None,
+        "office_timing_longitude": office_timing.longitude if office_timing else None,
+        "office_timing_radius": office_timing.radius_in_meters if office_timing else None,
+        "department_id": user.department_id,
+        "created_at": user.created_at,
+        "last_login": user.last_login
+    }
 
 
-from app.models.roles import Role
-from app.models.role_service_permissions import (
-    RoleServicePermission
-)
-from app.models.service_catalogue import (
-    ServiceCatalogue
-)
-
-def get_user_services(
-    db,
-    current_user
-):
-    role_id = current_user.get(
-        "custom_role_id"
-    )
+def get_user_services(db, current_user):
+    role_id = current_user.get("custom_role_id")
 
     if not role_id:
         return []
@@ -972,14 +1038,10 @@ def get_user_services(
         )
         .join(
             ServiceCatalogue,
-            RoleServicePermission.service_id
-            ==
-            ServiceCatalogue.id
+            RoleServicePermission.service_id == ServiceCatalogue.id
         )
         .filter(
-            RoleServicePermission.role_id
-            ==
-            role_id
+            RoleServicePermission.role_id == role_id
         )
         .all()
     )
@@ -1001,3 +1063,142 @@ def get_user_services(
         )
 
     return result
+
+
+# ✅ NEW: Office Timing Assignment Functions
+
+def assign_office_timing_to_users(db, office_timing_id: str, user_ids: list[str], current_user):
+    """Assign office timing to multiple users."""
+    try:
+        # Validate office timing
+        client_id = current_user["client_id"] if current_user["role"] != "ADMIN" else None
+        
+        query = db.query(OfficeTiming).filter(
+            OfficeTiming.id == office_timing_id,
+            OfficeTiming.is_active == True
+        )
+        
+        if client_id:
+            query = query.filter(OfficeTiming.client_id == client_id)
+        
+        office_timing = query.first()
+        
+        if not office_timing:
+            raise HTTPException(
+                status_code=404,
+                detail="Office timing not found or inactive"
+            )
+        
+        assigned_count = 0
+        failed_users = []
+        
+        for user_id in user_ids:
+            user_query = db.query(User).filter(User.id == user_id)
+            
+            if client_id:
+                user_query = user_query.filter(User.client_id == client_id)
+            
+            user = user_query.first()
+            
+            if not user:
+                failed_users.append({
+                    "user_id": user_id,
+                    "error": "User not found"
+                })
+                continue
+            
+            if not user.is_active:
+                failed_users.append({
+                    "user_id": user_id,
+                    "error": "User is inactive"
+                })
+                continue
+            
+            user.office_timing_id = office_timing_id
+            assigned_count += 1
+        
+        db.commit()
+        
+        return {
+            "office_timing_id": office_timing.id,
+            "office_timing_name": office_timing.name,
+            "assigned_count": assigned_count,
+            "failed_users": failed_users
+        }
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+def unassign_office_timing_from_users(db, user_ids: list[str], current_user):
+    """Unassign office timing from multiple users."""
+    try:
+        client_id = current_user["client_id"] if current_user["role"] != "ADMIN" else None
+        
+        unassigned_count = 0
+        failed_users = []
+        
+        for user_id in user_ids:
+            user_query = db.query(User).filter(User.id == user_id)
+            
+            if client_id:
+                user_query = user_query.filter(User.client_id == client_id)
+            
+            user = user_query.first()
+            
+            if not user:
+                failed_users.append({
+                    "user_id": user_id,
+                    "error": "User not found"
+                })
+                continue
+            
+            if not user.is_active:
+                failed_users.append({
+                    "user_id": user_id,
+                    "error": "User is inactive"
+                })
+                continue
+            
+            if not user.office_timing_id:
+                failed_users.append({
+                    "user_id": user_id,
+                    "error": "User has no office timing assigned"
+                })
+                continue
+            
+            user.office_timing_id = None
+            unassigned_count += 1
+        
+        db.commit()
+        
+        return {
+            "unassigned_count": unassigned_count,
+            "failed_users": failed_users
+        }
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+def get_users_by_office_timing(db, office_timing_id: str, current_user):
+    """Get all users assigned to a specific office timing."""
+    client_id = current_user["client_id"] if current_user["role"] != "ADMIN" else None
+    
+    query = db.query(User).filter(
+        User.office_timing_id == office_timing_id,
+        User.is_active == True
+    )
+    
+    if client_id:
+        query = query.filter(User.client_id == client_id)
+    
+    return query.all()

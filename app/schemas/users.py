@@ -270,3 +270,6 @@ class PasswordUpdateSchema(BaseModel):
     Schema for updating admin password
     """
     password: str
+
+
+    
