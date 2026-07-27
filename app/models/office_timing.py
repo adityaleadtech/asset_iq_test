@@ -1,3 +1,5 @@
+# app/models/office_timing.py
+
 import uuid
 
 from sqlalchemy import (
@@ -6,10 +8,11 @@ from sqlalchemy import (
     Boolean,
     Integer,
     Time,
-    Float,  # NEW - for latitude/longitude
+    Float,
     DateTime,
     ForeignKey,
     func,
+    CHAR
 )
 
 from sqlalchemy.orm import relationship
@@ -21,25 +24,17 @@ class OfficeTiming(Base):
     __tablename__ = "office_timings"
 
     id = Column(
-        String(36),
+        CHAR(36),
         primary_key=True,
         default=lambda: str(uuid.uuid4())
     )
 
     client_id = Column(
-        String(36),
+        CHAR(36),
         ForeignKey("clients.id"),
         nullable=False,
         index=True
     )
-
-    # ❌ REMOVE THIS LINE - location_id is no longer needed
-    # location_id = Column(
-    #     String(36),
-    #     ForeignKey("locations.id"),
-    #     nullable=False,
-    #     index=True
-    # )
 
     name = Column(
         String(100),
@@ -68,7 +63,7 @@ class OfficeTiming(Base):
         default=240
     )
 
-    # ✅ NEW - Geofencing fields (replaces location_id)
+    # Geofencing fields
     latitude = Column(
         Float,
         nullable=False
@@ -105,19 +100,11 @@ class OfficeTiming(Base):
     )
 
     # Relationships
-
     client = relationship(
         "Client",
         back_populates="office_timings"
     )
 
-    # ❌ REMOVE THIS RELATIONSHIP - no longer needed
-    # location = relationship(
-    #     "Location",
-    #     back_populates="office_timings"
-    # )
-
-    # ✅ UPDATE THIS RELATIONSHIP - add users relationship
     users = relationship(
         "User",
         back_populates="office_timing"

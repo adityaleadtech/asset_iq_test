@@ -1,3 +1,5 @@
+# app/models/location.py
+
 import uuid
 
 from sqlalchemy import (
@@ -151,10 +153,13 @@ class Location(Base):
         "Client",
         back_populates="locations"
     )
-    office_timings = relationship(
-    "OfficeTiming",
-    back_populates="location"
-)
+    
+    # ❌ REMOVED - OfficeTiming no longer has location_id
+    # office_timings = relationship(
+    #     "OfficeTiming",
+    #     back_populates="location"
+    # )
+    
     parent = relationship(
         "Location",
         remote_side=[id],
@@ -175,3 +180,6 @@ class Location(Base):
         "Department",
         back_populates="location"
     )
+
+    def __repr__(self):
+        return f"<Location(id={self.id}, name='{self.name}', client_id={self.client_id})>"

@@ -3,10 +3,12 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
+from sqlalchemy import func
 
 from app.models.clients import Client
-from app.models.location import Location
 from app.models.office_timing import OfficeTiming
+from app.models.attendance import Attendance
+from app.models.users import User
 
 from app.schemas.office_timing import (
     OfficeTimingCreate,
@@ -25,7 +27,7 @@ class OfficeTimingService:
         current_user: dict,
     ) -> OfficeTimingResponse:
         """
-        Create a new office timing configuration.
+        Create a new office timing configuration with geofencing data.
         """
         # Permission Check
         role = current_user.get("role")
@@ -63,28 +65,12 @@ class OfficeTimingService:
                 detail="Client not found."
             )
         
-        # Validate Location
-        location = (
-            db.query(Location)
-            .filter(
-                Location.id == payload.location_id,
-                Location.client_id == client_id,
-                Location.is_active == True,
-            )
-            .first()
-        )
-        
-        if not location:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Location not found."
-            )
-        
-        # Duplicate Check
+        # Check for duplicate name within client
         existing = (
             db.query(OfficeTiming)
             .filter(
-                OfficeTiming.location_id == payload.location_id,
+                OfficeTiming.client_id == client_id,
+                OfficeTiming.name == payload.name,
                 OfficeTiming.is_active == True,
             )
             .first()
@@ -93,7 +79,7 @@ class OfficeTimingService:
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Office timing already exists for this location."
+                detail=f"Office timing with name '{payload.name}' already exists for this client."
             )
         
         # Validate Time
@@ -103,16 +89,19 @@ class OfficeTimingService:
                 detail="Check-out time must be greater than check-in time."
             )
         
-        # Create Object
+        # Create OfficeTiming with geofencing data
         office_timing = OfficeTiming(
             id=str(uuid.uuid4()),
             client_id=client_id,
-            location_id=payload.location_id,
             name=payload.name,
             check_in_time=payload.check_in_time,
             check_out_time=payload.check_out_time,
             late_after_minutes=payload.late_after_minutes,
             half_day_after_minutes=payload.half_day_after_minutes,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            radius_in_meters=payload.radius_in_meters,
+            is_active=True
         )
         
         # Save
@@ -124,13 +113,14 @@ class OfficeTimingService:
         return OfficeTimingResponse(
             id=office_timing.id,
             client_id=office_timing.client_id,
-            location_id=office_timing.location_id,
-            location_name=location.name,
             name=office_timing.name,
             check_in_time=office_timing.check_in_time,
             check_out_time=office_timing.check_out_time,
             late_after_minutes=office_timing.late_after_minutes,
             half_day_after_minutes=office_timing.half_day_after_minutes,
+            latitude=office_timing.latitude,
+            longitude=office_timing.longitude,
+            radius_in_meters=office_timing.radius_in_meters,
             is_active=office_timing.is_active,
             created_at=office_timing.created_at,
             updated_at=office_timing.updated_at,
@@ -142,33 +132,28 @@ class OfficeTimingService:
         current_user: dict,
         page: int = 1,
         size: int = 10,
-        location_id: Optional[str] = None,
     ) -> OfficeTimingListResponse:
         """
         Get paginated list of office timings with permission filtering.
         """
         role = current_user.get("role")
         
-        # Build base query with join to Location
-        query = (
-            db.query(OfficeTiming)
-            .join(Location)
-        )
+        # Build base query
+        query = db.query(OfficeTiming).filter(OfficeTiming.is_active == True)
         
         # Apply role-based filtering
         if role == "CLIENT_ADMIN":
             query = query.filter(
                 OfficeTiming.client_id == current_user.get("client_id")
             )
-        elif role != "PLATFORM_ADMIN":
+        elif role == "PLATFORM_ADMIN":
+            # Platform admin can see all
+            pass
+        else:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to view office timings."
             )
-        
-        # Apply location filter
-        if location_id:
-            query = query.filter(OfficeTiming.location_id == location_id)
         
         # Get total count
         total = query.count()
@@ -176,6 +161,7 @@ class OfficeTimingService:
         # Apply pagination
         records = (
             query
+            .order_by(OfficeTiming.created_at.desc())
             .offset((page - 1) * size)
             .limit(size)
             .all()
@@ -187,13 +173,14 @@ class OfficeTimingService:
                 OfficeTimingResponse(
                     id=item.id,
                     client_id=item.client_id,
-                    location_id=item.location_id,
-                    location_name=item.location.name,
                     name=item.name,
                     check_in_time=item.check_in_time,
                     check_out_time=item.check_out_time,
                     late_after_minutes=item.late_after_minutes,
                     half_day_after_minutes=item.half_day_after_minutes,
+                    latitude=item.latitude,
+                    longitude=item.longitude,
+                    radius_in_meters=item.radius_in_meters,
                     is_active=item.is_active,
                     created_at=item.created_at,
                     updated_at=item.updated_at,
@@ -247,13 +234,14 @@ class OfficeTimingService:
         return OfficeTimingResponse(
             id=office_timing.id,
             client_id=office_timing.client_id,
-            location_id=office_timing.location_id,
-            location_name=office_timing.location.name,
             name=office_timing.name,
             check_in_time=office_timing.check_in_time,
             check_out_time=office_timing.check_out_time,
             late_after_minutes=office_timing.late_after_minutes,
             half_day_after_minutes=office_timing.half_day_after_minutes,
+            latitude=office_timing.latitude,
+            longitude=office_timing.longitude,
+            radius_in_meters=office_timing.radius_in_meters,
             is_active=office_timing.is_active,
             created_at=office_timing.created_at,
             updated_at=office_timing.updated_at,
@@ -300,42 +288,6 @@ class OfficeTimingService:
                 detail="Not authorized to update this office timing."
             )
         
-        # If location_id is being updated, validate the new location
-        if payload.location_id is not None:
-            # Verify location exists and belongs to same client
-            location = (
-                db.query(Location)
-                .filter(
-                    Location.id == payload.location_id,
-                    Location.client_id == office_timing.client_id,
-                    Location.is_active == True,
-                )
-                .first()
-            )
-            
-            if not location:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Location not found or does not belong to this client."
-                )
-            
-            # Check if another active office timing already exists for this location
-            existing = (
-                db.query(OfficeTiming)
-                .filter(
-                    OfficeTiming.location_id == payload.location_id,
-                    OfficeTiming.is_active == True,
-                    OfficeTiming.id != office_timing_id,  # Exclude current record
-                )
-                .first()
-            )
-            
-            if existing:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Office timing already exists for this location."
-                )
-        
         # Validate time if either time is being updated
         check_in = payload.check_in_time or office_timing.check_in_time
         check_out = payload.check_out_time or office_timing.check_out_time
@@ -359,13 +311,14 @@ class OfficeTimingService:
         return OfficeTimingResponse(
             id=office_timing.id,
             client_id=office_timing.client_id,
-            location_id=office_timing.location_id,
-            location_name=office_timing.location.name,
             name=office_timing.name,
             check_in_time=office_timing.check_in_time,
             check_out_time=office_timing.check_out_time,
             late_after_minutes=office_timing.late_after_minutes,
             half_day_after_minutes=office_timing.half_day_after_minutes,
+            latitude=office_timing.latitude,
+            longitude=office_timing.longitude,
+            radius_in_meters=office_timing.radius_in_meters,
             is_active=office_timing.is_active,
             created_at=office_timing.created_at,
             updated_at=office_timing.updated_at,
@@ -409,6 +362,22 @@ class OfficeTimingService:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to delete this office timing."
+            )
+        
+        # Check if there are users assigned to this timing
+        user_count = (
+            db.query(func.count(User.id))
+            .filter(
+                User.office_timing_id == office_timing_id,
+                User.is_active == True
+            )
+            .scalar()
+        )
+        
+        if user_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete office timing. {user_count} active users are assigned to it."
             )
         
         # Check if there are attendance records using this timing

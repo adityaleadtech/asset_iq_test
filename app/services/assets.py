@@ -5,12 +5,12 @@ import json
 import tempfile
 import uuid
 from datetime import datetime, timezone, date
-from typing import Optional
+from typing import Optional, Literal
 from io import BytesIO
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, asc, desc, and_
+from sqlalchemy import or_, asc, desc, and_, false
 from sqlalchemy.orm import joinedload
 
 import barcode
@@ -32,6 +32,41 @@ from app.schemas.assets import AssetBulkCreate, AssetVerificationRequest, Create
 from app.utils.qr import generate_asset_qr
 from app.config.permission import has_permission
 import app.config.cloudinary
+
+
+# ============================================
+# LITERAL TYPES
+# ============================================
+
+AssetConditionLiteral = Literal[
+    "ACTIVE",
+    "INACTIVE", 
+    "DAMAGED",
+    "UNDER_MAINTENANCE",
+    "LOST"
+]
+
+TagStateLiteral = Literal[
+    "TAGGED",
+    "NOT_TAGGED"
+]
+
+SortByLiteral = Literal[
+    "name",
+    "manufacturer",
+    "purchase_date",
+    "created_at",
+    "serial_number",
+    "asset_condition",
+    "tag_state",
+    "last_scanned_at",
+    "model"
+]
+
+SortOrderLiteral = Literal[
+    "asc",
+    "desc"
+]
 
 
 # ============================================
@@ -1692,8 +1727,8 @@ def search_assets(
     department_id: Optional[str] = None,
     location_id: Optional[str] = None,
     assigned_to_user_id: Optional[str] = None,
-    asset_condition: Optional[str] = None,
-    tag_state: Optional[str] = None,
+    asset_condition: Optional[AssetConditionLiteral] = None,
+    tag_state: Optional[TagStateLiteral] = None,
     manufacturer: Optional[str] = None,
     serial_number: Optional[str] = None,
     purchase_start_date: Optional[date] = None,
@@ -1701,11 +1736,15 @@ def search_assets(
     last_scanned_from: Optional[datetime] = None,
     last_scanned_to: Optional[datetime] = None,
     created_by: Optional[str] = None,
-    sort_by: str = "created_at",
-    sort_order: str = "desc",
+    sort_by: SortByLiteral = "created_at",
+    sort_order: SortOrderLiteral = "desc",
     page: int = 1,
     limit: int = 20
 ):
+    """
+    Core asset search logic with role-based access control.
+    """
+    
     query = (
         db.query(Asset)
         .filter(Asset.is_active == True)
@@ -1718,21 +1757,22 @@ def search_assets(
         )
     )
 
-    if current_user["role"] == "ADMIN":
+    user_role = current_user.get("role")
+    
+    if user_role == "ADMIN":
         if client_id:
             query = query.filter(Asset.client_id == client_id)
     else:
         query = query.filter(Asset.client_id == current_user["client_id"])
-
-    if current_user["role"] == "MANAGER":
-        department_ids = get_managed_department_ids(db, current_user["id"])
-        if not department_ids:
-            query = query.filter(False)
-        else:
-            query = query.filter(Asset.department_id.in_(department_ids))
-
-    if current_user["role"] == "USER" and not current_user.get("custom_role_id"):
-        query = query.filter(Asset.assigned_to_user_id == current_user["id"])
+        
+        if user_role == "MANAGER":
+            department_ids = get_managed_department_ids(db, current_user["id"])
+            if not department_ids:
+                query = query.filter(false())
+            else:
+                query = query.filter(Asset.department_id.in_(department_ids))
+        elif user_role == "USER" and not current_user.get("custom_role_id"):
+            query = query.filter(Asset.assigned_to_user_id == current_user["id"])
 
     if q:
         query = query.outerjoin(Location, Asset.location_id == Location.id)
@@ -1746,7 +1786,8 @@ def search_assets(
                     Asset.model.ilike(f"%{term}%"),
                     Asset.manufacturer.ilike(f"%{term}%"),
                     Asset.serial_number.ilike(f"%{term}%"),
-                    Location.name.ilike(f"%{term}%")
+                    Location.name.ilike(f"%{term}%"),
+                    Location.normalized_name.ilike(f"%{term}%")
                 )
             )
         if search_filters:
@@ -1766,13 +1807,12 @@ def search_assets(
         query = query.filter(Asset.asset_condition == asset_condition)
     if tag_state:
         query = query.filter(Asset.tag_state == tag_state)
+    if created_by:
+        query = query.filter(Asset.created_by == created_by)
     if manufacturer:
         query = query.filter(Asset.manufacturer.ilike(f"%{manufacturer}%"))
     if serial_number:
         query = query.filter(Asset.serial_number == serial_number)
-    if created_by:
-        query = query.filter(Asset.created_by == created_by)
-
     if purchase_start_date:
         query = query.filter(Asset.purchase_date >= purchase_start_date)
     if purchase_end_date:
@@ -1781,10 +1821,6 @@ def search_assets(
         query = query.filter(Asset.last_scanned_at >= last_scanned_from)
     if last_scanned_to:
         query = query.filter(Asset.last_scanned_at <= last_scanned_to)
-
-    sort_order = sort_order.lower()
-    if sort_order not in ["asc", "desc"]:
-        sort_order = "desc"
 
     sortable_fields = {
         "name": Asset.name,
@@ -1797,31 +1833,22 @@ def search_assets(
         "last_scanned_at": Asset.last_scanned_at,
         "model": Asset.model
     }
-
     sort_column = sortable_fields.get(sort_by, Asset.created_at)
-
+    
     if sort_order == "asc":
         query = query.order_by(asc(sort_column))
     else:
         query = query.order_by(desc(sort_column), desc(Asset.created_at))
 
-    page = max(page, 1)
-    limit = max(limit, 1)
-    limit = min(limit, 100)
-
-    offset = (page - 1) * limit
-
     total = query.distinct(Asset.id).count()
-
     assets = (
         query
         .distinct(Asset.id)
-        .offset(offset)
+        .offset((page - 1) * limit)
         .limit(limit)
         .all()
     )
-
-    total_pages = (total + limit - 1) // limit if limit > 0 else 0
+    total_pages = (total + limit - 1) // limit
 
     return {
         "items": assets,
@@ -1835,8 +1862,6 @@ def search_assets(
         }
     }
 
-
-# ============================================
 
 # ============================================
 # GET ASSET TIMELINE
@@ -1885,8 +1910,6 @@ def get_asset_timeline(
             "performed_by": scan.scanner.full_name if scan.scanner else None,
             "created_at": scan.scanned_at
         })
-
-    
 
     # Maintenance
     maintenance_tasks = (

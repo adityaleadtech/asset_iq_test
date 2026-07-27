@@ -7,7 +7,8 @@ from sqlalchemy import func
 from app.models.attendance import Attendance, AttendanceStatus
 from app.models.office_timing import OfficeTiming
 from app.models.users import User
-from app.models.location import Location
+# ❌ Remove Location import - no longer needed
+# from app.models.location import Location
 
 from app.schemas.attendance import (
     AttendanceCheckIn,
@@ -34,7 +35,7 @@ class AttendanceService:
         Flow:
         1. Validate user role (USER or MANAGER)
         2. Check if already checked in today
-        3. Get user's office timing via location_id
+        3. Get user's office timing via office_timing_id (NEW)
         4. Determine status based on check-in time
         5. Create attendance record
         6. Return response
@@ -68,10 +69,9 @@ class AttendanceService:
                 detail="Already checked in today."
             )
         
-        # Step 4: Load User with Location
+        # Step 4: Get User (NO Location join)
         user = (
             db.query(User)
-            .join(Location, User.location_id == Location.id)
             .filter(User.id == current_user["id"])
             .first()
         )
@@ -82,18 +82,18 @@ class AttendanceService:
                 detail="User not found."
             )
         
-        # Check if user has a location
-        if not user.location_id:
+        # Step 5: Check if user has an office timing assigned
+        if not user.office_timing_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User not assigned to a location."
+                detail="User not assigned to an office timing. Please contact your administrator."
             )
         
-        # Step 5: Find Office Timing
+        # Step 6: Get Office Timing directly
         office_timing = (
             db.query(OfficeTiming)
             .filter(
-                OfficeTiming.location_id == user.location_id,
+                OfficeTiming.id == user.office_timing_id,
                 OfficeTiming.is_active == True,
             )
             .first()
@@ -102,13 +102,13 @@ class AttendanceService:
         if not office_timing:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Office timing not configured for this location."
+                detail="Office timing not found or inactive."
             )
         
-        # Step 6: Current time
+        # Step 7: Current time
         now = datetime.now()
         
-        # Step 7: Calculate status
+        # Step 8: Calculate status
         scheduled = datetime.combine(
             today,
             office_timing.check_in_time,
@@ -126,7 +126,7 @@ class AttendanceService:
         else:
             attendance_status = AttendanceStatus.HALF_DAY
         
-        # Step 8: Create attendance record
+        # Step 9: Create attendance record
         attendance = Attendance(
             client_id=user.client_id,
             user_id=user.id,
@@ -137,14 +137,16 @@ class AttendanceService:
             check_in_longitude=payload.longitude,
             status=attendance_status,
             working_minutes=0,
+            is_late=(attendance_status in [AttendanceStatus.LATE, AttendanceStatus.HALF_DAY]),
+            is_half_day=(attendance_status == AttendanceStatus.HALF_DAY),
         )
         
-        # Step 9: Save
+        # Step 10: Save
         db.add(attendance)
         db.commit()
         db.refresh(attendance)
         
-        # Step 10: Return response
+        # Step 11: Return response
         return AttendanceResponse(
             id=attendance.id,
             attendance_date=attendance.attendance_date,
@@ -160,6 +162,8 @@ class AttendanceService:
             check_out_longitude=attendance.check_out_longitude,
             working_minutes=attendance.working_minutes,
             status=attendance.status.value,
+            is_late=attendance.is_late,
+            is_half_day=attendance.is_half_day,
             remarks=attendance.remarks,
             created_at=attendance.created_at,
             updated_at=attendance.updated_at,
@@ -245,6 +249,7 @@ class AttendanceService:
             
             if hours_worked < expected_hours / 2:
                 attendance.status = AttendanceStatus.HALF_DAY
+                attendance.is_half_day = True
         
         # Step 8: Save
         db.commit()
@@ -273,6 +278,8 @@ class AttendanceService:
             check_out_longitude=attendance.check_out_longitude,
             working_minutes=attendance.working_minutes,
             status=attendance.status.value,
+            is_late=attendance.is_late,
+            is_half_day=attendance.is_half_day,
             remarks=attendance.remarks,
             created_at=attendance.created_at,
             updated_at=attendance.updated_at,
@@ -331,6 +338,8 @@ class AttendanceService:
             check_out_longitude=attendance.check_out_longitude,
             working_minutes=attendance.working_minutes,
             status=attendance.status.value,
+            is_late=attendance.is_late,
+            is_half_day=attendance.is_half_day,
             remarks=attendance.remarks,
             created_at=attendance.created_at,
             updated_at=attendance.updated_at,
@@ -397,6 +406,8 @@ class AttendanceService:
                     check_out_longitude=attendance.check_out_longitude,
                     working_minutes=attendance.working_minutes,
                     status=attendance.status.value,
+                    is_late=attendance.is_late,
+                    is_half_day=attendance.is_half_day,
                     remarks=attendance.remarks,
                     created_at=attendance.created_at,
                     updated_at=attendance.updated_at,
@@ -447,8 +458,9 @@ class AttendanceService:
                 query = query.filter(Attendance.status == filters.status)
             if filters.department_id:
                 query = query.filter(User.department_id == filters.department_id)
-            if filters.location_id:
-                query = query.filter(User.location_id == filters.location_id)
+            # ❌ REMOVE location_id filter - no longer exists
+            # if filters.location_id:
+            #     query = query.filter(User.location_id == filters.location_id)
         
         total = query.count()
         
@@ -486,6 +498,8 @@ class AttendanceService:
                     check_out_longitude=attendance.check_out_longitude,
                     working_minutes=attendance.working_minutes,
                     status=attendance.status.value,
+                    is_late=attendance.is_late,
+                    is_half_day=attendance.is_half_day,
                     remarks=attendance.remarks,
                     created_at=attendance.created_at,
                     updated_at=attendance.updated_at,
@@ -651,7 +665,6 @@ class AttendanceService:
             present_today=present_today,
             late_today=late_today,
             absent_today=absent_today,
-            on_leave_today=0,
             half_day_today=half_day_today,
             overall_attendance_percentage=overall_attendance_percentage,
         )
