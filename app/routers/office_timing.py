@@ -14,14 +14,38 @@ from app.schemas.office_timing import (
 from app.services.office_timing import OfficeTimingService
 from app.utils.auth import get_current_user, admin_required, client_admin_required
 
+
 router = APIRouter(prefix="/office-timings", tags=["Office Timings"])
 
+
+# ============================================
+# PERMISSION FUNCTION
+# ============================================
+
+def admin_or_client_admin_required(current_user=Depends(get_current_user)):
+    """
+    Dependency to check if user is either Platform Admin or Client Admin.
+    """
+    role = current_user.get("role")
+    
+    if role not in ["ADMIN", "PLATFORM_ADMIN", "CLIENT_ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Platform Admins and Client Admins can access this resource."
+        )
+    
+    return current_user
+
+
+# ============================================
+# ROUTES
+# ============================================
 
 @router.post("/", response_model=OfficeTimingResponse)
 def create_office_timing(
     payload: OfficeTimingCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(admin_required),
+    current_user=Depends(admin_or_client_admin_required),
 ):
     """
     Create a new office timing configuration.
@@ -36,10 +60,8 @@ def create_office_timing(
 def get_office_timings(
     page: int = Query(1, ge=1, description="Page number"),
     size: int = Query(10, ge=1, le=100, description="Items per page"),
-    # ❌ REMOVE location_id parameter
-    # location_id: Optional[str] = Query(None, description="Filter by location ID"),
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(admin_or_client_admin_required),
 ):
     """
     Get paginated list of office timings with permission filtering.
@@ -49,7 +71,6 @@ def get_office_timings(
         current_user=current_user,
         page=page,
         size=size,
-        # ❌ Remove location_id
     )
 
 
@@ -57,7 +78,7 @@ def get_office_timings(
 def get_office_timing(
     office_timing_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(admin_or_client_admin_required),
 ):
     """
     Get a single office timing by ID.
@@ -70,7 +91,7 @@ def update_office_timing(
     office_timing_id: str,
     payload: OfficeTimingUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(admin_required),
+    current_user=Depends(admin_or_client_admin_required),
 ):
     """
     Update an existing office timing configuration.
@@ -82,7 +103,7 @@ def update_office_timing(
 def delete_office_timing(
     office_timing_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(admin_or_client_admin_required),
 ):
     """
     Soft delete an office timing configuration.

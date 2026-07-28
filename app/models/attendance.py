@@ -1,3 +1,5 @@
+# app/models/attendance.py
+
 import uuid
 import enum
 
@@ -50,7 +52,6 @@ class Attendance(Base):
         index=True
     )
 
-    # ✅ office_timing_id is already here - good!
     office_timing_id = Column(
         String(36),
         ForeignKey("office_timings.id"),
@@ -64,12 +65,8 @@ class Attendance(Base):
         index=True
     )
 
+    # ===== CHECK-IN FIELDS =====
     check_in = Column(
-        DateTime,
-        nullable=True
-    )
-
-    check_out = Column(
         DateTime,
         nullable=True
     )
@@ -84,6 +81,17 @@ class Attendance(Base):
         nullable=True
     )
 
+    check_in_accuracy = Column(
+        Float,
+        nullable=True
+    )
+
+    # ===== CHECK-OUT FIELDS =====
+    check_out = Column(
+        DateTime,
+        nullable=True
+    )
+
     check_out_latitude = Column(
         Float,
         nullable=True
@@ -94,17 +102,17 @@ class Attendance(Base):
         nullable=True
     )
 
-    # ✅ NEW - GPS accuracy fields
-    check_in_accuracy = Column(
-        Float,
-        nullable=True
-    )
-
     check_out_accuracy = Column(
         Float,
         nullable=True
     )
 
+    check_out_notes = Column(
+        Text,
+        nullable=True
+    )
+
+    # ===== STATUS & CALCULATIONS =====
     working_minutes = Column(
         Integer,
         default=0,
@@ -117,14 +125,12 @@ class Attendance(Base):
         default=AttendanceStatus.PRESENT
     )
 
-    # ✅ NEW - track if employee was late
     is_late = Column(
         Boolean,
         default=False,
         nullable=False
     )
 
-    # ✅ NEW - track if employee had half day
     is_half_day = Column(
         Boolean,
         default=False,
@@ -136,12 +142,7 @@ class Attendance(Base):
         nullable=True
     )
 
-    # ✅ NEW - checkout notes (e.g., distance from office)
-    check_out_notes = Column(
-        Text,
-        nullable=True
-    )
-
+    # ===== TIMESTAMPS =====
     created_at = Column(
         DateTime,
         server_default=func.now(),
@@ -155,12 +156,12 @@ class Attendance(Base):
         nullable=False
     )
 
-    # Relationships - REMOVE back_populates to avoid circular imports
+    # ===== RELATIONSHIPS =====
     client = relationship("Client")
     user = relationship("User")
     office_timing = relationship("OfficeTiming")
 
-    # Unique constraint to prevent duplicate check-ins per day
+    # ===== CONSTRAINTS =====
     __table_args__ = (
         UniqueConstraint(
             "user_id",

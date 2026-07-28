@@ -12,8 +12,6 @@ from sqlalchemy import (
     ForeignKey
 )
 from sqlalchemy.orm import relationship
-
-from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.config.database import Base
@@ -23,10 +21,10 @@ class AuditPlan(Base):
     __tablename__ = "audit_plans"
 
     id = Column(
-    String(36),
-    primary_key=True,
-    default=lambda: str(uuid.uuid4())
-)
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
 
     client_id = Column(
         String(36),
@@ -117,25 +115,27 @@ class AuditPlan(Base):
         back_populates="audit_plan",
         cascade="all, delete-orphan"
     )
+    
     client = relationship("Client")
 
     auditor = relationship(
-    "User",
-    foreign_keys=[auditor_id]
-)   
+        "User",
+        foreign_keys=[auditor_id]
+    )
 
     creator = relationship(
-    "User",
-    foreign_keys=[created_by]
-)
+        "User",
+        foreign_keys=[created_by]
+    )
 
     audit_sessions = relationship(
-    "AuditSession",
-    back_populates="audit_plan",
-    cascade="all, delete-orphan"
-)
+        "AuditSession",
+        back_populates="audit_plan",
+        cascade="all, delete-orphan"
+    )
+    
     audit_targets = relationship(
-    "AuditTarget",
-    back_populates="audit_plan",
-    cascade="all, delete-orphan"
-)
+        "AuditTarget",
+        back_populates="audit_plan",
+        cascade="all, delete-orphan"
+    )

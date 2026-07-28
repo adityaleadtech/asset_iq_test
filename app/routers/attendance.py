@@ -1,3 +1,5 @@
+# app/routers/attendance.py
+
 from datetime import date
 from typing import Optional
 
@@ -37,7 +39,7 @@ router = APIRouter(
 
 
 # ============================================================
-# Employee APIs
+# Employee APIs (For All Users)
 # ============================================================
 
 @router.post(
@@ -55,16 +57,14 @@ def check_in(
     """
     Check in for the day.
     
-    - **User/Manger**: Can check in
-    - Validates user role (USER or MANAGER)
-    - Prevents duplicate check-in for the same day
-    - Determines attendance status based on office timing:
-        - **PRESENT**: Checked in within grace period
-        - **LATE**: Checked in after grace period but before half-day threshold
-        - **HALF_DAY**: Checked in after half-day threshold
-    - Records check-in location (latitude/longitude)
+    **Allowed Roles:** USER, MANAGER, CLIENT_ADMIN
     
-    Returns the complete attendance record.
+    - **USER**: Regular employee
+    - **MANAGER**: Can check in
+    - **CLIENT_ADMIN**: Can check in (for testing/demo purposes)
+    
+    Validates user role, prevents duplicate check-in, determines attendance status,
+    and records check-in location.
     """
     return AttendanceService.check_in(
         payload=payload,
@@ -87,14 +87,14 @@ def check_out(
     """
     Check out for the day.
     
-    - **User/Manager**: Can check out
-    - Validates user role (USER or MANAGER)
-    - Requires existing check-in for today
-    - Calculates working minutes
-    - Updates attendance status to HALF_DAY if checked out too early
-    - Records check-out location (latitude/longitude)
+    **Allowed Roles:** USER, MANAGER, CLIENT_ADMIN
     
-    Returns the complete attendance record.
+    - **USER**: Regular employee
+    - **MANAGER**: Can check out
+    - **CLIENT_ADMIN**: Can check out (for testing/demo purposes)
+    
+    Requires existing check-in, calculates working minutes,
+    and records check-out location.
     """
     return AttendanceService.check_out(
         payload=payload,
@@ -116,14 +116,10 @@ def get_my_attendance(
     """
     Get today's attendance record for the authenticated user.
     
-    - **User/Manager/Admin**: Can view their own attendance
-    - Returns the complete attendance record including:
-        - Check-in/out times
-        - Status (PRESENT, LATE, HALF_DAY, ABSENT)
-        - Location data
-        - Working minutes
+    **Allowed Roles:** USER, MANAGER, CLIENT_ADMIN
     
-    Returns 404 if no attendance record found for today.
+    Returns the complete attendance record including check-in/out times,
+    status, location data, and working minutes.
     """
     return AttendanceService.get_my_attendance(
         db=db,
@@ -148,11 +144,9 @@ def get_my_attendance_history(
     """
     Get attendance history with pagination.
     
-    - **User/Manager/Admin**: Can view their own history
-    - Returns all attendance records for the current user
-    - Supports date range filtering
-    - Paginated results (default: page 1, size 10)
-    - Ordered by attendance date (newest first)
+    **Allowed Roles:** USER, MANAGER, CLIENT_ADMIN
+    
+    Returns all attendance records for the current user with date range filtering.
     """
     return AttendanceService.get_my_attendance_history(
         db=db,
@@ -165,7 +159,7 @@ def get_my_attendance_history(
 
 
 # ============================================================
-# Admin APIs
+# Admin APIs (Admin Only)
 # ============================================================
 
 @router.get(
@@ -197,15 +191,14 @@ def get_all_attendance(
     - **Platform Admin**: Can view all attendance records across all clients
     - **Client Admin**: Can view only their client's attendance records
     
-    **Available Filters:**
-    - `user_id`: Get attendance for a specific user
-    - `department_id`: Filter by department
-    - `location_id`: Filter by location
-    - `status`: Filter by attendance status (PRESENT, LATE, HALF_DAY, ABSENT)
-    - `start_date/end_date`: Date range filter
-    
-    Results are paginated and ordered by date (newest first).
+    Available filters: user_id, department_id, location_id, status, start_date, end_date
     """
+    # Check admin permissions
+    if current_user.get("role") not in ["PLATFORM_ADMIN", "CLIENT_ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required to view all attendance records."
+        )
     
     filters = AttendanceFilterParams(
         user_id=user_id,
@@ -243,23 +236,20 @@ def get_attendance_dashboard(
     - **Platform Admin**: Sees data for all clients
     - **Client Admin**: Sees data for their client only
     
-    **Returns:**
-    - **Today's Summary**: Total employees, present, late, absent, half-day
-    - **Weekly Attendance Trend**: Last 7 days (present vs absent)
-    - **Monthly Attendance Trend**: Last 4 weeks (present vs absent)
-    - **Overall Attendance Percentage**: Last 30 days
-    
-    This endpoint is useful for HR dashboards and reporting.
+    Returns today's summary, weekly trend, monthly trend, and attendance percentage.
     """
+    # Check admin permissions
+    if current_user.get("role") not in ["PLATFORM_ADMIN", "CLIENT_ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required to view dashboard."
+        )
+    
     return AttendanceService.get_attendance_dashboard(
         db=db,
         current_user=current_user,
     )
 
-
-# ============================================================
-# Additional Admin APIs (Optional)
-# ============================================================
 
 @router.get(
     "/user/{user_id}",
@@ -284,8 +274,15 @@ def get_user_attendance(
     - **Platform Admin**: Can view any user's attendance
     - **Client Admin**: Can view only users in their client
     
-    This endpoint is useful for managers to review employee attendance.
+    Useful for managers to review employee attendance.
     """
+    # Check admin permissions
+    if current_user.get("role") not in ["PLATFORM_ADMIN", "CLIENT_ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required to view user attendance."
+        )
+    
     filters = AttendanceFilterParams(
         user_id=user_id,
         start_date=start_date,
@@ -316,17 +313,16 @@ def get_today_summary(
     
     **Admin Only** - Requires PLATFORM_ADMIN or CLIENT_ADMIN role.
     
-    Returns count of:
-    - Total employees
-    - Present employees
-    - Late employees
-    - Half-day employees
-    - Absent employees
-    - Employees on leave
-    - Overall attendance percentage
-    
-    This is a lightweight version of the dashboard endpoint.
+    Returns count of total employees, present, late, half-day, absent,
+    and overall attendance percentage.
     """
+    # Check admin permissions
+    if current_user.get("role") not in ["PLATFORM_ADMIN", "CLIENT_ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required to view summary."
+        )
+    
     dashboard = AttendanceService.get_attendance_dashboard(
         db=db,
         current_user=current_user,
